@@ -1,0 +1,10 @@
+[model]
+name = "hf.co/unsloth/LFM2.5-8B-A1B-GGUF:UD-Q4_K_M"
+provider = "ollama"
+max_turns = 4
+memory_horizon = 5
+format_guard = true
+recency_protection = true
+has_thinking_tags = true
+base_url = "http://localhost:11434"
+timeout = 30

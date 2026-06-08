@@ -1,0 +1,17 @@
+[project]
+name = "localite"
+version = "0.1.0"
+description = "A fully local, interactive multi-turn coding agent with approval gating"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx",
+    "rich",
+    "pydantic",
+    "tomli",
+]
+
+[tool.setuptools.packages.find]
+include = ["localite*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
