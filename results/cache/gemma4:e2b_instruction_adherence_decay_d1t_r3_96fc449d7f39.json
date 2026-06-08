@@ -1,0 +1,10 @@
+[
+  {
+    "role": "user",
+    "content": "How does the internet work?"
+  },
+  {
+    "role": "assistant",
+    "content": "The internet works by connecting billions of devices using a global network of interconnected computers.\n\nAt its core, data is broken down into small pieces called packets, which are sent across the network. These packets travel via various physical connections, such as fiber optic cables, to routers.\n\nRouters direct these packets along the most efficient path to their destination, using addressing systems like IP addresses.\n\nProtocols, primarily TCP/IP, provide the rules and formats that all devices use to communicate with each other reliably. When you request a webpage, your device sends a request, which is broken into packets, sent through routers, and reassembled on the server and then sent back to you as the webpage.\n\nServers store the information (websites, files), and client devices (computers, phones) use web protocols like HTTP to request and display that information."
+  }
+]

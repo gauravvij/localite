@@ -1,0 +1,26 @@
+[
+  {
+    "role": "user",
+    "content": "Tell me about the Great Barrier Reef."
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"population of Tokyo\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the speed of sound?"
+  },
+  {
+    "role": "assistant",
+    "content": "The speed of sound in dry air at 20 degrees Celsius is approximately 343 meters per second or about 767 miles per hour."
+  },
+  {
+    "role": "user",
+    "content": "What is the tallest mountain in the solar system?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"speed of sound\"}}"
+  }
+]

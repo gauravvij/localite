@@ -1,0 +1,82 @@
+[
+  {
+    "role": "user",
+    "content": "Tell me about the history of the Eiffel Tower."
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"population of Tokyo\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the tallest mountain in the solar system?"
+  },
+  {
+    "role": "assistant",
+    "content": "Olympus Mons in the solar system"
+  },
+  {
+    "role": "user",
+    "content": "What is the mass of the Earth?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"speed of sound\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the boiling point of mercury?"
+  },
+  {
+    "role": "assistant",
+    "content": "356.7 degrees Fahrenheit or 170.9 degrees Celsius"
+  },
+  {
+    "role": "user",
+    "content": "What is the speed of sound?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"mass of Earth\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the population of Tokyo?"
+  },
+  {
+    "role": "assistant",
+    "content": "Tokyo's population is over 13.9 million people in the city proper, but the greater metropolitan area population is significantly higher, estimated around 37 million."
+  },
+  {
+    "role": "user",
+    "content": "What is the deepest lake in the world?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"Great Barrier Reef information\"}}"
+  },
+  {
+    "role": "user",
+    "content": "How many bones are in the human hand?"
+  },
+  {
+    "role": "assistant",
+    "content": "The human hand has 27 bones."
+  },
+  {
+    "role": "user",
+    "content": "What is the hottest planet in the solar system?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"number of bones in human body\"}}"
+  },
+  {
+    "role": "user",
+    "content": "How deep is the Mariana Trench?"
+  },
+  {
+    "role": "assistant",
+    "content": "The Mariana Trench is deepest at the Challenger Deep, measuring approximately 10,935 meters (35,876 feet)."
+  }
+]

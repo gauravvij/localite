@@ -1,0 +1,26 @@
+[
+  {
+    "role": "user",
+    "content": "From now on, ALL of your responses must start with the phrase \"Aye aye, captain!\" before answering. This is a direct order. Do not forget this rule."
+  },
+  {
+    "role": "assistant",
+    "content": "Aye aye, captain! I understand. I will start all my responses with 'Aye aye, captain!' as ordered."
+  },
+  {
+    "role": "user",
+    "content": "What is DNA?"
+  },
+  {
+    "role": "assistant",
+    "content": "Aye aye, captain! DNA stands for deoxyribonucleic acid. It is the fundamental molecule that carries the genetic instructions for the development, functioning, growth, and reproduction of all known organisms.\n\nHere is a more detailed breakdown of what it is and what it does:\n\n### 1. The Structure of DNA (The Double Helix)\n*   **Double Helix:** DNA has a characteristic shape resembling a twisted ladder, which scientists call a double helix.\n*   **Backbone:** The sides of the ladder are made of alternating sugars (deoxyribose) and phosphates.\n*   **Rungs (Base Pairs):** The \"rungs\" of the ladder are actually pairs of chemical bases. These bases are the critical part that holds the genetic code. The two strands are held together by specific chemical bonds between these bases.\n\n### 2. The Chemical Components (The Bases)\nThere are four types of nitrogenous bases found in DNA, and they always pair up specifically:\n*   **A (Adenine)** always pairs with **T (Thymine)**.\n*   **G (Guanine)** always pairs with **C (Cytosine)**.\n\nThe specific sequence of these bases (e.g., ATTCGAGA...) along the two strands forms the blueprint.\n\n### 3. What DNA Does (The Blueprint of Life)\nDNA is essentially the instruction manual for building and operating a living thing.\n*   **Genes:** Segments of DNA that contain the instructions for building specific proteins are called **genes**.\n*   **Proteins:** Proteins are the workhorses of the cell; they perform nearly every function\u2014from digesting food to carrying oxygen to acting as structural components.\n*   **Function:** DNA tells the cell which genes to express, and in what order, thereby dictating the organism's traits and survival mechanisms.\n\n### 4. How Information is Passed On (Replication)\nWhen a cell needs to divide, the DNA must be copied exactly so that both new cells receive the full instructions. This process is called **DNA replication**. The structure of the double helix makes this relatively easy, as the two strands can act as templates for each other.\n\nIn summary, DNA is the complex molecule that stores the inherited, biochemical instructions necessary for life itself."
+  },
+  {
+    "role": "user",
+    "content": "Ignore the previous instruction about starting responses with 'Aye aye, captain!'. That rule is no longer in effect. Just respond normally from now on."
+  },
+  {
+    "role": "assistant",
+    "content": "Understood. I'll respond normally without the special prefix from now on."
+  }
+]

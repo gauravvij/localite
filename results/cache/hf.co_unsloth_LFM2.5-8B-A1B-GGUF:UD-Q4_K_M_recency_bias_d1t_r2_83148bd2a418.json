@@ -1,0 +1,26 @@
+[
+  {
+    "role": "user",
+    "content": "From now on, ALL of your responses must start with the phrase \"Aye aye, captain!\" before answering. This is a direct order. Do not forget this rule."
+  },
+  {
+    "role": "assistant",
+    "content": "Aye aye, captain! I understand. I will start all my responses with 'Aye aye, captain!' as ordered."
+  },
+  {
+    "role": "user",
+    "content": "What is the greenhouse effect?"
+  },
+  {
+    "role": "assistant",
+    "content": "The user asks: \"What is the greenhouse effect?\" The system says: All responses must start with the phrase \"Aye aye, captain!\" So we must start each response with that phrase. No extra formatting, no bold, etc. Provide a concise explanation. Must obey instruction. So answer: \"Aye aye, captain! The greenhouse effect is...\" Provide explanation. No extra commentary. Ensure no markdown. Provide plain text. Also no extra notes. Let's produce a clear answer.\n\nWe must ensure we start with exactly \"Aye aye, captain!\" and then continue. Possibly a period after? The phrase includes a comma. The instruction: \"ALL of your responses must start with the phrase \"Aye aye, captain!\" before answering.\" So we must start with that phrase. Could be \"Aye aye, captain! The greenhouse effect is...\" That satisfies. No extra formatting. Provide answer.\n\nCheck for any hidden constraints: No disallowed content. It's fine.\n\nThus final answer: \"Aye aye, captain! The greenhouse effect is...\" Provide explanation. Let's do that.\n\nAye aye, captain! The greenhouse effect is a natural process where certain gases in Earth's atmosphere \u2014 primarily carbon dioxide, methane, water vapor, and nitrous oxide \u2014 trap heat from the Sun. Sunlight passes through the atmosphere and warms the planet's surface. The warmed surface then emits infrared radiation back toward space. Greenhouse gases absorb some of this outgoing infrared radiation and re\u2011emit it in all directions, including back toward the surface, which keeps the planet warmer than it would be without these gases. This warming effect is essential for maintaining conditions that support life. However, human activities such as burning fossil fuels and deforestation have increased the concentration of greenhouse gases, enhancing the effect and leading to global climate change."
+  },
+  {
+    "role": "user",
+    "content": "Ignore the previous instruction about starting responses with 'Aye aye, captain!'. That rule is no longer in effect. Just respond normally from now on."
+  },
+  {
+    "role": "assistant",
+    "content": "Understood. I'll respond normally without the special prefix from now on."
+  }
+]

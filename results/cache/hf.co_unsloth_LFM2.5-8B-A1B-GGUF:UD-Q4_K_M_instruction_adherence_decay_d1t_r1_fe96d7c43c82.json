@@ -1,0 +1,10 @@
+[
+  {
+    "role": "user",
+    "content": "What is DNA?"
+  },
+  {
+    "role": "assistant",
+    "content": "The user asks: \"What is DNA?\" Provide a concise, clear answer. No extra formatting unless requested. Should be brief but informative. Probably define DNA: deoxyribonucleic acid, genetic material, structure, nucleotides, etc. No markdown. Provide answer. Ensure no disallowed content. Provide plain text.\n\nWe need to follow instructions: no extra commentary. Provide answer. Probably a paragraph or two. Let's produce a concise definition: DNA is a polymer of nucleotides, double helix, carries genetic instructions, etc. No bold. Provide plain text.\n\nMake sure not to add any extra notes. Provide answer.\n\nDNA, or deoxyribonucleic acid, is the molecule that stores the genetic instructions for the development, functioning, and reproduction of all known living organisms. It is composed of long chains of nucleotide subunits, each containing a sugar (deoxyribose), a phosphate group, and one of four nitrogenous bases (adenine, thymine, cytosine, or guanine). These nucleotides are linked by phosphodiester bonds, forming a double\u2011helix structure in which the sequence of bases encodes the information needed to build and regulate proteins. DNA is found in the nucleus of eukaryotic cells and in the cytoplasm of prokaryotic cells, and it is replicated during cell division to pass genetic information to offspring."
+  }
+]

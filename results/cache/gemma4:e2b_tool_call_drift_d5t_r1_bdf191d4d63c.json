@@ -1,0 +1,42 @@
+[
+  {
+    "role": "user",
+    "content": "What is the capital of Australia?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"population of Tokyo\"}}"
+  },
+  {
+    "role": "user",
+    "content": "How old is the Earth?"
+  },
+  {
+    "role": "assistant",
+    "content": "The Earth is approximately 4.54 billion years old."
+  },
+  {
+    "role": "user",
+    "content": "What is the tallest mountain in the solar system?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"speed of sound\"}}"
+  },
+  {
+    "role": "user",
+    "content": "How far is the Sun from Earth?"
+  },
+  {
+    "role": "assistant",
+    "content": "The average distance between the Sun and Earth is about 150 million kilometers or 93 million miles."
+  },
+  {
+    "role": "user",
+    "content": "Tell me about the history of the Eiffel Tower."
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"mass of Earth\"}}"
+  }
+]

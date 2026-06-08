@@ -1,0 +1,82 @@
+[
+  {
+    "role": "user",
+    "content": "Tell me about the Great Barrier Reef."
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"population of Tokyo\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the speed of sound?"
+  },
+  {
+    "role": "assistant",
+    "content": "The user asks: \"What is the speed of sound?\" It's a straightforward question. We need to answer concisely. According to typical knowledge, the speed of sound in air at sea level at 20\u00b0C is about 343 meters per second. However, the speed varies with temperature, humidity, and medium. The question is simple, no special formatting needed. Provide answer: \"The speed of sound is approximately 343 meters per second at sea level under standard atmospheric conditions (20\u00b0C, 1 atm).\" Possibly also mention variations. The instruction: \"Provide only the requested response without extra commentary, notes, disclaimers, or post-scripts beyond what is explicitly asked.\" So just answer the question. Probably a short sentence or a short paragraph. Let's give a concise answer: \"The speed of sound in dry air at 20\u202f\u00b0C (68\u202f\u00b0F) and 1 atm is about 343\u202fm/s (\u2248 1,225\u202fkm/h or 760\u202fmph).\" That includes extra info but it's okay. It's not extra commentary, just factual. That should be fine. No markdown. Provide that.\n\nThe speed of sound in dry air at 20\u202f\u00b0C (68\u202f\u00b0F) and standard atmospheric pressure (1\u202fatm) is about 343\u202fmeters per second (\u2248\u202f1,225\u202fkm/h or 760\u202fmph)."
+  },
+  {
+    "role": "user",
+    "content": "What is the tallest mountain in the solar system?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"speed of sound\"}}"
+  },
+  {
+    "role": "user",
+    "content": "Tell me about the history of the Eiffel Tower."
+  },
+  {
+    "role": "assistant",
+    "content": "The user asks: \"Tell me about the history of the Eiffel Tower.\" This is a straightforward informational request. According to instructions, we should provide a concise, accurate answer, no extra formatting unless asked. No special formatting required. Provide a brief overview: construction dates, purpose, design, initial reception, later uses, significance. Keep it concise but informative. No markdown. Provide answer directly.\n\nWe must not add extra commentary. So answer: The Eiffel Tower was built for the 1889 Exposition Universelle in Paris, designed by Gustave Eiffel, completed in 1889, originally intended to be temporary, saved due to its usefulness for radio transmission, height, cultural impact, etc.\n\nWe should not use bold or markdown. Provide plain text. Let's produce a paragraph.\n\nThe Eiffel Tower was designed by engineer Gustave Eiffel and his team for the 1889 Exposition Universelle (World\u2019s Fair) in Paris, celebrating the 100th anniversary of the French Revolution. Construction began in January 1887 and was completed in March 1889, using over 18,000 iron parts held together by rivets. At 300\u202fmeters tall (including its antenna), it was the tallest man\u2011made structure in the world until the Chrysler Building surpassed it in 1930. Although initially criticized by many artists and intellectuals, the tower proved valuable for scientific experiments and later for radio transmission, which helped secure its permanent place. It has since become an iconic symbol of Paris and a major tourist attraction, undergoing several renovations and repaintings to maintain its iconic silhouette."
+  },
+  {
+    "role": "user",
+    "content": "How far is the Sun from Earth?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"mass of Earth\"}}"
+  },
+  {
+    "role": "user",
+    "content": "How many bones are in the human body?"
+  },
+  {
+    "role": "assistant",
+    "content": "We need to answer the user's question: \"How many bones are in the human body?\" The user has not asked for any special formatting, just a straightforward factual answer. According to common knowledge, the adult human has 206 bones. This is a well-established fact. There's no need for additional context or references. The instruction says to provide only the requested response without extra commentary, notes, or disclaimers. So we should respond succinctly: \"The adult human body has 206 bones.\" Possibly we could add that it's for a typical adult, but that might be considered extra commentary. The question is simple, so a direct answer is appropriate. No markdown formatting needed.\n\nThus final answer: The adult human body has 206 bones.\n\nThe adult human body has 206 bones."
+  },
+  {
+    "role": "user",
+    "content": "What is the mass of the Earth?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"Great Barrier Reef information\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the boiling point of mercury?"
+  },
+  {
+    "role": "assistant",
+    "content": "We need to answer the question: \"What is the boiling point of mercury?\" The user has asked this. There's no prior context that changes anything. The instruction says: Provide only the requested response without extra commentary, notes, disclaimers, or post-scripts beyond what is explicitly asked. So we should give a concise answer. The boiling point of mercury is about 356.73 \u00b0C (or 630.59 K). We can give the value in degrees Celsius. Possibly also Kelvin? The question is simple, so we can answer directly: \"The boiling point of mercury is approximately 356.7\u202f\u00b0C (or 630.6\u202fK).\" That's factual and concise. No markdown. Provide that.\n\nThus final answer: The boiling point of mercury is about 356.7\u202f\u00b0C (or 630.6\u202fK).\n\nThe boiling point of mercury is about 356.7\u202f\u00b0C (or 630.6\u202fK)."
+  },
+  {
+    "role": "user",
+    "content": "How many species of penguins are there?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"number of bones in human body\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the chemical formula for table salt?"
+  },
+  {
+    "role": "assistant",
+    "content": "The user asks: \"What is the chemical formula for table salt?\" This is a straightforward factual question. According to my knowledge, table salt is sodium chloride, with formula NaCl. I should provide a concise answer. No special formatting required. So answer: The chemical formula for table salt is NaCl. That's it. No extra commentary. Provide that.\n\nThe chemical formula for table salt is NaCl."
+  }
+]

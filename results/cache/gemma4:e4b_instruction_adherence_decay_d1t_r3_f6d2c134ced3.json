@@ -1,0 +1,10 @@
+[
+  {
+    "role": "user",
+    "content": "How does the internet work?"
+  },
+  {
+    "role": "assistant",
+    "content": "The internet is a global network of interconnected computers and devices. Data travels as small packets across physical cables, primarily fiber optic, through various infrastructure like routers and servers. These devices use a standardized set of rules called protocols (like TCP/IP) to direct the packets to their correct destination addresses (IP addresses), allowing information to be shared worldwide."
+  }
+]

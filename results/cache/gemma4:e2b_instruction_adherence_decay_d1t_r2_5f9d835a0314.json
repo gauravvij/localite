@@ -1,0 +1,10 @@
+[
+  {
+    "role": "user",
+    "content": "What is the greenhouse effect?"
+  },
+  {
+    "role": "assistant",
+    "content": "The greenhouse effect is the process by which gases in the Earth's atmosphere trap some of the heat radiating from the Earth's surface.\n\nSolar radiation warms the Earth, and some of this heat is radiated back as infrared energy. Greenhouse gases, such as carbon dioxide and methane, absorb this infrared radiation and re-radiate some of it back toward the surface, which keeps the planet warmer than it would be otherwise."
+  }
+]

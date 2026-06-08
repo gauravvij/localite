@@ -1,0 +1,10 @@
+[
+  {
+    "role": "user",
+    "content": "What is the capital of Australia?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"population of Tokyo\"}}"
+  }
+]

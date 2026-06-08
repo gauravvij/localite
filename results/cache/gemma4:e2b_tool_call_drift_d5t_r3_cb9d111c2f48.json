@@ -1,0 +1,42 @@
+[
+  {
+    "role": "user",
+    "content": "Tell me about the history of the Eiffel Tower."
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"population of Tokyo\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the tallest mountain in the solar system?"
+  },
+  {
+    "role": "assistant",
+    "content": "Mount Olympus is generally considered the tallest mountain in the solar system."
+  },
+  {
+    "role": "user",
+    "content": "What is the mass of the Earth?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"speed of sound\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the boiling point of mercury?"
+  },
+  {
+    "role": "assistant",
+    "content": "The boiling point of mercury is 356.767 degrees Celsius at standard atmospheric pressure."
+  },
+  {
+    "role": "user",
+    "content": "What is the speed of sound?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"mass of Earth\"}}"
+  }
+]

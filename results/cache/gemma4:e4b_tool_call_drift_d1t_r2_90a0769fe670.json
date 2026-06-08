@@ -1,0 +1,10 @@
+[
+  {
+    "role": "user",
+    "content": "Tell me about the Great Barrier Reef."
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"population of Tokyo\"}}"
+  }
+]

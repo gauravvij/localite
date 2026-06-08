@@ -1,0 +1,82 @@
+[
+  {
+    "role": "user",
+    "content": "Tell me about the Great Barrier Reef."
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"population of Tokyo\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the speed of sound?"
+  },
+  {
+    "role": "assistant",
+    "content": "The speed of sound is approximately 343 meters per second at room temperature."
+  },
+  {
+    "role": "user",
+    "content": "What is the tallest mountain in the solar system?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"speed of sound\"}}"
+  },
+  {
+    "role": "user",
+    "content": "Tell me about the history of the Eiffel Tower."
+  },
+  {
+    "role": "assistant",
+    "content": "The Eiffel Tower was built for the 1889 Exposition Universelle (World's Fair) in Paris to celebrate the centennial of the French Revolution. It was designed by Gustave Eiffel's company and was intended to be a temporary structure but was kept because it proved to be a useful radio transmission antenna."
+  },
+  {
+    "role": "user",
+    "content": "How far is the Sun from Earth?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"mass of Earth\"}}"
+  },
+  {
+    "role": "user",
+    "content": "How many bones are in the human body?"
+  },
+  {
+    "role": "assistant",
+    "content": "The average adult human body has 206 bones."
+  },
+  {
+    "role": "user",
+    "content": "What is the mass of the Earth?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"Great Barrier Reef information\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the boiling point of mercury?"
+  },
+  {
+    "role": "assistant",
+    "content": "The boiling point of mercury is 356.7 degrees Celsius (662.1 degrees Fahrenheit)."
+  },
+  {
+    "role": "user",
+    "content": "How many species of penguins are there?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"number of bones in human body\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the chemical formula for table salt?"
+  },
+  {
+    "role": "assistant",
+    "content": "The chemical formula for table salt is sodium chloride, or NaCl."
+  }
+]

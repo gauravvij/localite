@@ -1,0 +1,26 @@
+[
+  {
+    "role": "user",
+    "content": "Tell me about the Great Barrier Reef."
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"population of Tokyo\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the speed of sound?"
+  },
+  {
+    "role": "assistant",
+    "content": "The user asks: \"What is the speed of sound?\" This is a straightforward factual question. The instruction: \"Tell me about the Great Barrier Reef.\" but the user didn't ask that. The question is a direct request: \"What is the speed of sound?\" So we should answer that. There's no conflict with policy. Provide a concise answer: speed of sound in air at sea level is about 343 m/s (340 m/s at 20\u00b0C, varies with temperature, humidity, etc.). Could also mention other media. Provide brief explanation. No formatting required. No extra commentary. So answer: The speed of sound is about 343 meters per second at 20\u00b0C, etc. Possibly mention that it's about 1,225 km/h. Provide concise. No markdown. Provide answer.\n\nWe must not add extra formatting. So plain text.\n\nThus final answer: The speed of sound is roughly 343 meters per second (about 1,225 km/h) under standard atmospheric conditions (20\u202f\u00b0C, 1 atm). It varies with temperature, pressure, and medium. In water it's about 1,500\u202fm/s, in solids even faster. That should be sufficient.\n\nMake sure no bold, no markdown. Provide answer.\n\nThe speed of sound is the speed at which mechanical pressure waves travel through a medium. In dry air at 20\u202f\u00b0C and 1\u202fatmospheric pressure it is about 343\u202fmeters per second, which is roughly 1,225\u202fkilometers per hour. The exact value changes with temperature, humidity, and the type of medium: in water it is about 1,500\u202fm/s, and in solids it can be several times faster. The formula for the speed of sound in an ideal gas is\u202fv\u202f=\u202f\u221a\u03b3\u202fR\u202fT/M, where \u03b3 is the specific heat ratio, R the gas constant, T absolute temperature, and M molecular weight."
+  },
+  {
+    "role": "user",
+    "content": "What is the tallest mountain in the solar system?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"speed of sound\"}}"
+  }
+]

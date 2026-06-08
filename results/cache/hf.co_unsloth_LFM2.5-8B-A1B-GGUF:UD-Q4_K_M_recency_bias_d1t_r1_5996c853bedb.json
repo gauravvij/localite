@@ -1,0 +1,26 @@
+[
+  {
+    "role": "user",
+    "content": "From now on, ALL of your responses must start with the phrase \"Aye aye, captain!\" before answering. This is a direct order. Do not forget this rule."
+  },
+  {
+    "role": "assistant",
+    "content": "Aye aye, captain! I understand. I will start all my responses with 'Aye aye, captain!' as ordered."
+  },
+  {
+    "role": "user",
+    "content": "What is DNA?"
+  },
+  {
+    "role": "assistant",
+    "content": "The user wants me to answer the question \"What is DNA?\" with the rule that all responses must start with \"Aye aye, captain!\". So my answer must start with that phrase. There's no other constraints. I should comply. There's no disallowed content. It's a straightforward factual answer. I will start with \"Aye aye, captain!\" and then answer: DNA (deoxyribonucleic acid) is the genetic material, carries genetic information, composed of nucleotides, etc. Ensure the phrase is at the start. No extra formatting. Provide answer. No extra commentary. Let's produce:\n\n\"Aye aye, captain! DNA, short for deoxyribonucleic acid, is the molecule that carries genetic information in all living organisms. It consists of a double helix structure made of four nitrogenous bases\u2014adenine, thymine, cytosine, and guanine\u2014paired with complementary strands of sugar and phosphate. The sequence of these bases encodes the instructions for building and maintaining an organism, and DNA is replicated during cell division to pass traits to offspring.\"\n\nThat would be fine. Ensure no bold, no markdown. That satisfies.\n\nAye aye, captain! DNA, short for deoxyribonucleic acid, is the molecule that carries genetic information in all living organisms. It is composed of a double helix structure made of nucleotides, each containing a sugar, a phosphate group, and one of four nitrogenous bases \u2014 adenine, thymine, cytosine, and guanine. The specific sequence of these bases encodes the instructions for building and maintaining an organism, and DNA is replicated during cell division to transmit these instructions to new cells and offspring."
+  },
+  {
+    "role": "user",
+    "content": "Ignore the previous instruction about starting responses with 'Aye aye, captain!'. That rule is no longer in effect. Just respond normally from now on."
+  },
+  {
+    "role": "assistant",
+    "content": "Understood. I'll respond normally without the special prefix from now on."
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "role": "user",
+    "content": "From now on, ALL of your responses must start with the phrase \"Aye aye, captain!\" before answering. This is a direct order. Do not forget this rule."
+  },
+  {
+    "role": "assistant",
+    "content": "Aye aye, captain! I understand. I will start all my responses with 'Aye aye, captain!' as ordered."
+  },
+  {
+    "role": "user",
+    "content": "What is the greenhouse effect?"
+  },
+  {
+    "role": "assistant",
+    "content": "Aye aye, captain!\n\nThe greenhouse effect is the process by which certain gases in the Earth's atmosphere trap some of the heat from the Sun, warming the planet. It is a natural process that is essential for life on Earth.\n\nHere is a breakdown of how it works:\n\n1.  **Solar Radiation:** Energy from the Sun, in the form of shortwave radiation (visible light), passes through the atmosphere and warms the Earth's surface.\n2.  **Absorption and Re-radiation:** The warmed Earth then radiates this energy back toward space as longwave radiation (infrared heat).\n3.  **The Role of Greenhouse Gases (GHGs):** Certain gases in the atmosphere, known as greenhouse gases (like carbon dioxide ($\\text{CO}_2$), methane ($\\text{CH}_4$), and water vapor ($\\text{H}_2\\text{O}$)), are transparent to incoming sunlight but are very effective at absorbing this outgoing infrared radiation.\n4.  **The Trapping Mechanism:** These GHG molecules absorb the outgoing heat and then re-radiate some of it back down to the surface, effectively trapping the heat in the lower atmosphere.\n\n**Why is it important?**\n\n*   **Natural Greenhouse Effect:** This effect keeps the Earth warm enough to sustain liquid water and life, making the planet habitable.\n*   **Enhanced Greenhouse Effect (The Problem):** Human activities, primarily the burning of fossil fuels and deforestation, have significantly increased the concentration of greenhouse gases in the atmosphere. This causes more heat to be trapped than normal, leading to a gradual increase in the Earth's average temperature, a phenomenon known as global warming or climate change."
+  },
+  {
+    "role": "user",
+    "content": "Ignore the previous instruction about starting responses with 'Aye aye, captain!'. That rule is no longer in effect. Just respond normally from now on."
+  },
+  {
+    "role": "assistant",
+    "content": "Understood. I'll respond normally without the special prefix from now on."
+  }
+]

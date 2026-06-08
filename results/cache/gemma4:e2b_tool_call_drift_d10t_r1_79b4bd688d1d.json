@@ -1,0 +1,82 @@
+[
+  {
+    "role": "user",
+    "content": "What is the capital of Australia?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"population of Tokyo\"}}"
+  },
+  {
+    "role": "user",
+    "content": "How old is the Earth?"
+  },
+  {
+    "role": "assistant",
+    "content": "The Earth is approximately 4.54 billion years old."
+  },
+  {
+    "role": "user",
+    "content": "What is the tallest mountain in the solar system?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"speed of sound\"}}"
+  },
+  {
+    "role": "user",
+    "content": "How far is the Sun from Earth?"
+  },
+  {
+    "role": "assistant",
+    "content": "The average distance between the Sun and Earth is about 150 million kilometers (93 million miles)."
+  },
+  {
+    "role": "user",
+    "content": "Tell me about the history of the Eiffel Tower."
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"mass of Earth\"}}"
+  },
+  {
+    "role": "user",
+    "content": "How many species of penguins are there?"
+  },
+  {
+    "role": "assistant",
+    "content": "There are currently eight recognized species of penguins."
+  },
+  {
+    "role": "user",
+    "content": "How many bones are in the human hand?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"Great Barrier Reef information\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the hottest planet in the solar system?"
+  },
+  {
+    "role": "assistant",
+    "content": "Venus is the hottest planet in the solar system due to its dense atmosphere."
+  },
+  {
+    "role": "user",
+    "content": "What is the most abundant element in the universe?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"number of bones in human body\"}}"
+  },
+  {
+    "role": "user",
+    "content": "What is the boiling point of mercury?"
+  },
+  {
+    "role": "assistant",
+    "content": "The boiling point of mercury is 356.76 degrees Celsius."
+  }
+]

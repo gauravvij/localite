@@ -1,0 +1,42 @@
+[
+  {
+    "role": "user",
+    "content": "What is the capital of Australia?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"population of Tokyo\"}}"
+  },
+  {
+    "role": "user",
+    "content": "How old is the Earth?"
+  },
+  {
+    "role": "assistant",
+    "content": "The user asks: \"How old is the Earth?\" This is a factual question. The answer: Earth formed about 4.54 billion years ago, according to current scientific consensus. The user didn't specify any constraints about formatting, but the system says: \"Provide only the requested response without extra commentary, notes, disclaimers, or post-scripts beyond what is explicitly asked.\" So we should give a concise answer: \"The Earth is approximately 4.54 billion years old.\" That's direct. No extra formatting. That should be fine.\n\nWe must not add extra commentary. So answer: \"The Earth is approximately 4.54\u202fbillion years old.\" That's it.\n\nWe must not use markdown unless asked. So plain text.\n\nThus final answer: The Earth is approximately 4.54\u202fbillion years old.\n\nThe Earth is approximately 4.54\u202fbillion years old."
+  },
+  {
+    "role": "user",
+    "content": "What is the tallest mountain in the solar system?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"speed of sound\"}}"
+  },
+  {
+    "role": "user",
+    "content": "How far is the Sun from Earth?"
+  },
+  {
+    "role": "assistant",
+    "content": "The user asks: \"How far is the Sun from Earth?\" The system says we should respond with only the requested response, no extra commentary. But we need to provide the answer. The question is ambiguous: distance varies due to orbital motion, average distance is about 1 astronomical unit (AU) \u2248 149.6 million kilometers (about 93 million miles). The user likely expects that answer. Provide concise answer: \"The average distance between the Sun and Earth is about 150 million kilometers (93 million miles).\" That is factual. No extra formatting. No mention of tool usage. So we can just answer directly.\n\nThus final answer: \"The average distance between the Sun and Earth is about 150\u202fmillion\u202fkilometers (approximately 93\u202fmillion\u202fmiles).\" That is concise and factual.\n\nWe must not add extra commentary. Provide that.\n\nThe average distance between the Sun and Earth is about 150\u202fmillion\u202fkilometers (approximately 93\u202fmillion\u202fmiles)."
+  },
+  {
+    "role": "user",
+    "content": "Tell me about the history of the Eiffel Tower."
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"mass of Earth\"}}"
+  }
+]

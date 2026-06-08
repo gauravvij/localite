@@ -1,0 +1,10 @@
+[
+  {
+    "role": "user",
+    "content": "What is DNA?"
+  },
+  {
+    "role": "assistant",
+    "content": "DNA is deoxyribonucleic acid, the molecule that carries the genetic instructions for the development, functioning, growth, and reproduction of all known organisms and many viruses. It is found in the nucleus of most cells. Structurally, DNA is famous for its double helix shape."
+  }
+]

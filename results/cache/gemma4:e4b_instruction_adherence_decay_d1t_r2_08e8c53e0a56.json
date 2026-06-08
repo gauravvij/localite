@@ -1,0 +1,10 @@
+[
+  {
+    "role": "user",
+    "content": "What is the greenhouse effect?"
+  },
+  {
+    "role": "assistant",
+    "content": "The greenhouse effect is the process by which certain gases in the Earth's atmosphere trap heat, warming the planet. These gases, called greenhouse gases, trap infrared radiation emitted from the Earth's surface, keeping the planet warm enough to sustain life."
+  }
+]

@@ -1,0 +1,10 @@
+[
+  {
+    "role": "user",
+    "content": "What is DNA?"
+  },
+  {
+    "role": "assistant",
+    "content": "DNA stands for deoxyribonucleic acid. It is the molecule that carries the genetic instructions for the development, functioning, growth, and reproduction of all known organisms. It is organized into chromosomes and dictates the traits of an organism."
+  }
+]

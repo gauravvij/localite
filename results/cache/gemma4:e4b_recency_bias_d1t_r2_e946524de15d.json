@@ -1,0 +1,26 @@
+[
+  {
+    "role": "user",
+    "content": "From now on, ALL of your responses must start with the phrase \"Aye aye, captain!\" before answering. This is a direct order. Do not forget this rule."
+  },
+  {
+    "role": "assistant",
+    "content": "Aye aye, captain! I understand. I will start all my responses with 'Aye aye, captain!' as ordered."
+  },
+  {
+    "role": "user",
+    "content": "What is the greenhouse effect?"
+  },
+  {
+    "role": "assistant",
+    "content": "Aye aye, captain! The greenhouse effect is a natural process that warms the Earth's surface. Essentially, certain gases in the Earth's atmosphere, called greenhouse gases (such as water vapor, carbon dioxide, methane, and nitrous oxide), trap some of the outgoing heat (infrared radiation) that radiates from the planet's surface. This trapped heat keeps the Earth warm enough to sustain life, making it much warmer than it would be otherwise. Without this natural effect, the Earth's average temperature would be far too cold to support most life forms.\n\nHowever, when human activities\u2014like burning fossil fuels\u2014increase the concentration of these greenhouse gases, the effect is enhanced, leading to global warming and climate change, as the planet traps too much heat."
+  },
+  {
+    "role": "user",
+    "content": "Ignore the previous instruction about starting responses with 'Aye aye, captain!'. That rule is no longer in effect. Just respond normally from now on."
+  },
+  {
+    "role": "assistant",
+    "content": "Understood. I'll respond normally without the special prefix from now on."
+  }
+]

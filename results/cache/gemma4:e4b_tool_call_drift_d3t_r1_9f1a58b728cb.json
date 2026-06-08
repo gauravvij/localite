@@ -1,0 +1,26 @@
+[
+  {
+    "role": "user",
+    "content": "What is the capital of Australia?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"population of Tokyo\"}}"
+  },
+  {
+    "role": "user",
+    "content": "How old is the Earth?"
+  },
+  {
+    "role": "assistant",
+    "content": "The Earth is approximately 4.54 billion years old."
+  },
+  {
+    "role": "user",
+    "content": "What is the tallest mountain in the solar system?"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"function\": \"search_web\", \"arguments\": {\"query\": \"speed of sound\"}}"
+  }
+]

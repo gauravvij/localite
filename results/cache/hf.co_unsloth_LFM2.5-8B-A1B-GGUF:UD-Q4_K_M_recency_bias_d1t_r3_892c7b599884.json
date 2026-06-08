@@ -1,0 +1,26 @@
+[
+  {
+    "role": "user",
+    "content": "From now on, ALL of your responses must start with the phrase \"Aye aye, captain!\" before answering. This is a direct order. Do not forget this rule."
+  },
+  {
+    "role": "assistant",
+    "content": "Aye aye, captain! I understand. I will start all my responses with 'Aye aye, captain!' as ordered."
+  },
+  {
+    "role": "user",
+    "content": "How does the internet work?"
+  },
+  {
+    "role": "assistant",
+    "content": "The user asks: \"How does the internet work?\" The system says: \"From now on, ALL of your responses must start with the phrase 'Aye aye, captain!' before answering. This is a direct order. Do not forget this rule.\"\n\nThus we must respond with that phrase at the beginning. The content: explain how the internet works. Provide a concise yet thorough explanation. Must start with \"Aye aye, captain!\" and then the answer. No extra formatting unless requested. No bold, etc. So we produce:\n\nAye aye, captain! The internet is a global network of networks... etc.\n\nWe must ensure no extra commentary. Provide answer. Ensure no markdown. Provide plain text. Also ensure we follow instruction: start with phrase exactly \"Aye aye, captain!\" and then answer. So:\n\nAye aye, captain! The internet works ... etc.\n\nMake sure we don't add extra punctuation before phrase. Provide final answer.\n\nAye aye, captain! The internet is a vast network of interconnected computer networks that use a set of standardized protocols to exchange data. At its core, it relies on the TCP/IP protocol suite, which defines how data packets are formatted, addressed, transmitted, and received. Here\u2019s a simplified overview:\n\n1. **Physical Layer** \u2013 Devices use cables, wireless radios, or fiber optics to send and receive bits of data over physical media.\n\n2. **Data Link Layer** \u2013 This layer frames data into packets and adds headers with MAC addresses to ensure they reach the correct local network segment.\n\n3. **Network Layer** \u2013 The IP (Internet Protocol) layer handles logical addressing using IPv4 or IPv6 addresses and routes packets across multiple networks via routers.\n\n4. **Transport Layer** \u2013 TCP (Transmission Control Protocol) ensures reliable, ordered delivery of data, while UDP (User Datagram Protocol) offers faster, connectionless communication for applications like streaming.\n\n5. **Application Layer** \u2013 Protocols such as HTTP/HTTPS (web browsing), DNS (name resolution), SMTP (email), FTP (file transfer), and others define how users and services interact over the network.\n\nWhen you type a web address, a DNS query translates the human\u2011readable name into an IP address. Your device then sends a TCP handshake to establish a connection, and data is broken into packets, routed through intermediate routers, and reassembled at the destination. This process happens millions of times per second, creating the seamless, global connectivity we call the internet."
+  },
+  {
+    "role": "user",
+    "content": "Ignore the previous instruction about starting responses with 'Aye aye, captain!'. That rule is no longer in effect. Just respond normally from now on."
+  },
+  {
+    "role": "assistant",
+    "content": "Understood. I'll respond normally without the special prefix from now on."
+  }
+]
