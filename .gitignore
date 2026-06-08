@@ -1,0 +1,29 @@
+# Virtual environment
+venv/
+.tmp/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+
+# Logs
+*.log
+ollama_logs.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large result files (keep summaries, omit raw JSON checkpoints if too large)
+# results/full_suite/*/results_*.jsonresults/cache/
