@@ -79,6 +79,8 @@ class AgentLoop:
         self.conversation_history: list[dict] = []
         self.active_plan: Optional[str] = None
         self.format_monitor = FormatMonitor()
+        self.stall_count = 0
+        self.stall_threshold = getattr(model_profile, 'stall_threshold', 3)
 
         # Init refresher
         tool_descs = "\n".join(
@@ -249,7 +251,8 @@ class AgentLoop:
                     "name": modified_call.get("name", "tool"),
                 })
         else:
-            # No tool call — just a message
+            # No tool call — just a message (or "none"/"null" was filtered out)
+            self.stall_count += 1
             self.conversation_history.append({
                 "role": "assistant",
                 "content": response_text,
@@ -301,16 +304,26 @@ class AgentLoop:
     def _check_degradation(self) -> bool:
         """Check for degradation signals that should trigger a refresh.
 
-        Checks:
-        1. Format drift (if format_guard enabled) — checked before turn limit
-        2. Turn limit reached
-        3. Memory horizon exceeded
+        Waterfall — checks the fastest/cheapest signals first:
+        1. Stall detection — model emitting "none"/"null"/noop tool names
+        2. Format decay — tool call format quality drops below threshold
+        3. Turn limit — hard cap on consecutive turns
 
         Returns:
             True if a context refresh is needed.
         """
-        # Check format monitor first (if format_guard is enabled)
-        if self.format_guard and self.format_monitor.should_refresh():
+        # 1. Stall detection (fastest: just a counter check)
+        if self.stall_count >= self.stall_threshold:
+            logger.info(
+                f"Stall detected ({self.stall_count} consecutive invalid tool names), "
+                f"triggering refresh"
+            )
+            self.stall_count = 0
+            self.format_monitor.reset()
+            return True
+
+        # 2. Format decay (always monitored for a coding agent)
+        if self.format_monitor.should_refresh():
             logger.info(
                 f"Format degradation detected (avg={self.format_monitor.average():.2f}), "
                 f"triggering refresh"
@@ -318,14 +331,9 @@ class AgentLoop:
             self.format_monitor.reset()
             return True
 
-        # Check turn limit
+        # 3. Turn limit (failsafe)
         if self.turn_counter.is_limit_reached():
             logger.info(f"Turn limit reached ({self.turn_counter.count}/{self.turn_counter.hard_limit})")
-            return True
-
-        # Check memory horizon
-        if self.turn_counter.count >= self.memory_horizon:
-            logger.info(f"Memory horizon reached ({self.turn_counter.count}/{self.memory_horizon})")
             return True
 
         return False
@@ -405,7 +413,10 @@ class AgentLoop:
         # Replace conversation history with refreshed context
         self.conversation_history = combined
         self.turn_counter.reset()
-        self.active_plan = None
+        # NOTE: active_plan is intentionally preserved across refresh.
+        # A context refresh fixes context quality (degradation), it should not
+        # erase the plan the model was working on. The plan is re-injected
+        # via extra_blocks above.
 
         logger.info(f"Context refreshed (refresh #{self.refresher.get_refresh_count()})")
 
@@ -513,6 +524,18 @@ class AgentLoop:
 
         # Record tool call in format monitor
         self.format_monitor.record_tool_call({"name": name, "args": args}, "")
+
+        # Reset stall counter — any valid tool call breaks the stall cycle
+        self.stall_count = 0
+
+        # Track files changed for write_file/edit_file tools
+        if result.success and name in ("write_file", "edit_file"):
+            file_path = args.get("filepath", args.get("path", ""))
+            if file_path:
+                if file_path not in self.episode.files_changed:
+                    self.episode.files_changed.append(file_path)
+                if file_path not in self.session_facts.files_created:
+                    self.session_facts.files_created.append(file_path)
 
         return result
 

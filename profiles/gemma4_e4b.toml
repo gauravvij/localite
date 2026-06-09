@@ -7,5 +7,6 @@ format_guard = false
 recency_protection = true
 has_thinking_tags = false
 iad_horizon = 30
+stall_threshold = 3
 base_url = "http://localhost:11434"
 timeout = 180
