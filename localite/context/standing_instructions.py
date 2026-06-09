@@ -31,8 +31,9 @@ You are operating in a 5-phase loop:
 - EXECUTE: Use tools to make changes
 - VERIFY: Run tests to confirm changes work
 - ITERATE: If tests fail, fix and re-run
+- COMPLETE: When the task is done, call the **task_complete** tool with a status, reason_code, and summary of what was accomplished. This is your FINAL phase — you must call task_complete before the loop ends. Do NOT exit without calling task_complete.
 
-Proceed through phases in order. Signal phase transitions by stating your phase.
+Proceed through phases in order. Signal phase transitions by stating your phase. When the loop transitions to COMPLETE phase, you MUST call task_complete in your very next response.
 
 ### Safety Rules
 - Never delete or modify files outside the project directory

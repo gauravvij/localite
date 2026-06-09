@@ -41,6 +41,9 @@ from localite.tools.search import GrepSearchTool
 from localite.tools.shell import RunShellTool
 from localite.tools.test_executor import TestExecutorTool
 from localite.tools.diff_view import DiffViewTool
+from localite.tools.task_complete import TaskCompleteTool
+from localite.tools.memory_tools import MemoryReadTool, MemoryWriteTool
+from localite.memory.memory_store import EpisodicMemoryStore
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +227,9 @@ def create_default_tools() -> dict[str, BaseTool]:
         RunShellTool,
         TestExecutorTool,
         DiffViewTool,
+        TaskCompleteTool,
+        MemoryReadTool,
+        MemoryWriteTool,
     ]:
         t = tool_cls()
         tools[t.name] = t
@@ -303,6 +309,10 @@ async def main_async(argv: list[str] | None = None):
 
     store = EpisodeStore()
 
+    # Create memory store for ephemeral memory
+    memory_base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory_data")
+    memory_store = EpisodicMemoryStore(base_dir=memory_base_dir)
+
     loop = AgentLoop(
         model_client=client,
         tools=tools,
@@ -310,6 +320,7 @@ async def main_async(argv: list[str] | None = None):
         episode_store=store,
         model_profile=profile,
         max_iterations=3,
+        memory_store=memory_store,
     )
 
     # Build and run terminal UI

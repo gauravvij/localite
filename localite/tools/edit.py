@@ -13,7 +13,7 @@ class EditFileTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Edit a file by finding and replacing text. Only replaces the first occurrence."
+        return "Edit a file by finding and replacing text. Use this to add docstrings, fix bugs, refactor code, or make any targeted change to an existing file. Only replaces the first occurrence of the search text."
 
     @property
     def parameters(self) -> dict:
