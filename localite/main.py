@@ -2,7 +2,7 @@
 
 Usage:
     python3 localite/main.py --model "hf.co/unsloth/LFM2.5-8B-A1B-GGUF:UD-Q4_K_M"
-    python3 localite/main.py --profile lfm25
+    python3 localite/main.py --profile gemma4_e4b
     python3 localite/main.py --resume <session_id>
 """
 
@@ -157,7 +157,7 @@ class LocaliteTerminal:
             Panel(
                 "[bold cyan]Welcome to localite — Fully Local AI Coding Agent[/]\n\n"
                 "[yellow]Enter your coding task below. Ctrl+D to exit, Ctrl+C to interrupt.[/]\n"
-                "[dim]Type 'exit' or 'quit' to quit.[/]",
+                "[dim]Type 'exit' or 'quit' to quit. | Default: Gemma 4 E4B[/]",
                 title="🐚 localite v0.1.0",
                 border_style="green",
             )
@@ -233,7 +233,7 @@ def create_default_tools() -> dict[str, BaseTool]:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="localite — Fully Local AI Coding Agent",
+        description="localite — Fully Local AI Coding Agent (default: Gemma 4 E4B)",
     )
     parser.add_argument(
         "--model",
@@ -244,8 +244,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--profile",
         type=str,
-        default="lfm25",
-        help="Model profile name (default: lfm25)",
+        default="gemma4_e4b",
+        help="Model profile name (default: gemma4_e4b)",
     )
     parser.add_argument(
         "--resume",
@@ -308,6 +308,7 @@ async def main_async(argv: list[str] | None = None):
         tools=tools,
         permission_gate=gate,
         episode_store=store,
+        model_profile=profile,
         max_iterations=3,
     )
 

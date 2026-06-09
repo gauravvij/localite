@@ -615,8 +615,15 @@ def test_add():
 
     print(f"\n[E2E] Episode: {result['episode_id']}")
     print(f"[E2E] Turns: {len(loaded_episode.turns)}")
-    print(f"[E2E] Files changed: {result.get('files_changed', [])}")
+    files_changed = result.get('files_changed', [])
+    print(f"[E2E] Files changed: {files_changed}")
     print(f"[E2E] Summary: {result.get('summary', '')}")
+
+    # Soft assertion: warn if no files were changed (real model may not write)
+    if not files_changed:
+        print("[E2E] ⚠️ No files were changed by the agent — the model may not have issued a write_file call")
+    else:
+        print(f"[E2E] ✅ Agent changed {len(files_changed)} file(s): {files_changed}")
 
     # Verify file was read (model may not produce tool calls, but episode shows interaction)
     with open(hello_py) as f:

@@ -31,6 +31,7 @@ class ModelProfile:
     format_guard: bool = True
     recency_protection: bool = True
     has_thinking_tags: bool = True
+    iad_horizon: int = 30
     base_url: str = "http://localhost:11434"
     timeout: int = 30
 

@@ -25,5 +25,21 @@ ollama_logs.txt
 .DS_Store
 Thumbs.db
 
-# Large result files (keep summaries, omit raw JSON checkpoints if too large)
-# results/full_suite/*/results_*.jsonresults/cache/
+# Generated output files from test runs (root-level only)
+/*
+!/src/
+!/localite/
+!/tests/
+!/profiles/
+!/scripts/
+!/docs/
+!/plans/
+!*.md
+!*.toml
+!*.cfg
+!*.ini
+!*.txt
+!.gitignore
+
+# Results
+results/

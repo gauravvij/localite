@@ -7,8 +7,10 @@ from typing import Any, Optional
 
 from localite.loop.phases import Phase, next_phase
 from localite.loop.turn_counter import TurnCounter
+from localite.config import ModelProfile
 from localite.context.buffer import SessionFacts
 from localite.context.refresh import ContextRefresher
+from localite.context.format_monitor import FormatMonitor
 from localite.context.standing_instructions import StandingInstructions
 from localite.model.client import AsyncOllamaClient
 from localite.permissions.gate import PermissionGate, PermissionResult
@@ -52,6 +54,7 @@ class AgentLoop:
         tools: dict[str, Any],
         permission_gate: PermissionGate,
         episode_store: EpisodeStore,
+        model_profile: Optional[ModelProfile] = None,
         standing_instructions: Optional[StandingInstructions] = None,
         max_iterations: int = 3,
     ):
@@ -62,12 +65,20 @@ class AgentLoop:
         self.standing_instructions = standing_instructions or StandingInstructions()
         self.max_iterations = max_iterations
 
+        # Profile-driven configuration
+        self.profile = model_profile
+        self.format_guard = model_profile.format_guard if model_profile else True
+        self.memory_horizon = model_profile.memory_horizon if model_profile else 5
+        self.recency_protection = model_profile.recency_protection if model_profile else True
+
         self.episode: Optional[Episode] = None
         self.session_facts = SessionFacts()
-        self.turn_counter = TurnCounter(hard_limit=4)
+        self.turn_counter = TurnCounter(hard_limit=model_profile.max_turns if model_profile else 4)
         self.current_phase = Phase.EXPLORE
         self.iteration_count = 0
         self.conversation_history: list[dict] = []
+        self.active_plan: Optional[str] = None
+        self.format_monitor = FormatMonitor()
 
         # Init refresher
         tool_descs = "\n".join(
@@ -174,6 +185,14 @@ class AgentLoop:
             model_output=response_text,
         )
 
+        # Plan anchoring: capture plan text when in PLAN phase
+        if self.current_phase == Phase.PLAN:
+            # Extract the plan from model output
+            plan_text = response_text.strip()
+            if plan_text:
+                self.active_plan = plan_text
+                logger.info(f"Plan captured ({len(plan_text)} chars)")
+
         # Parse and handle tool calls
         tool_call = self._parse_tool_call(response_text)
         if tool_call:
@@ -245,8 +264,8 @@ class AgentLoop:
     def _build_context(self) -> list[dict]:
         """Construct the full context for the model.
 
-        Includes: system prompt, standing instructions, session facts,
-        episode history, and conversation history (trimmed to fit).
+        Includes: system prompt, standing instructions (if recency_protection),
+        session facts, active plan (if any), and conversation history (trimmed).
         """
         # Build the core system message
         tool_descs = "\n".join(
@@ -256,9 +275,23 @@ class AgentLoop:
 
         messages = [{"role": "system", "content": system_prompt}]
 
+        # Inject standing instructions as a user message (counters recency bias)
+        if self.recency_protection:
+            messages.append({
+                "role": "user",
+                "content": f"[STANDING INSTRUCTIONS]\n{self.standing_instructions.get_text()}",
+            })
+
         # Add session facts as a user context message
         facts_block = self.session_facts.to_context_block()
         messages.append({"role": "user", "content": facts_block})
+
+        # Inject active plan block if one exists
+        if self.active_plan:
+            messages.append({
+                "role": "user",
+                "content": f"[ACTIVE PLAN]\n{self.active_plan}",
+            })
 
         # Add episode history if available
         # Post-MVP: load selective reference episodes here
@@ -269,30 +302,110 @@ class AgentLoop:
         """Check for degradation signals that should trigger a refresh.
 
         Checks:
-        1. Turn limit reached
-        2. Format drift (if format_guard enabled)
+        1. Format drift (if format_guard enabled) — checked before turn limit
+        2. Turn limit reached
         3. Memory horizon exceeded
 
         Returns:
             True if a context refresh is needed.
         """
+        # Check format monitor first (if format_guard is enabled)
+        if self.format_guard and self.format_monitor.should_refresh():
+            logger.info(
+                f"Format degradation detected (avg={self.format_monitor.average():.2f}), "
+                f"triggering refresh"
+            )
+            self.format_monitor.reset()
+            return True
+
+        # Check turn limit
         if self.turn_counter.is_limit_reached():
             logger.info(f"Turn limit reached ({self.turn_counter.count}/{self.turn_counter.hard_limit})")
             return True
+
+        # Check memory horizon
+        if self.turn_counter.count >= self.memory_horizon:
+            logger.info(f"Memory horizon reached ({self.turn_counter.count}/{self.memory_horizon})")
+            return True
+
         return False
 
     def _refresh_context(self):
-        """Re-inject system prompt, standing instructions, and reset turn counter."""
+        """Re-inject system prompt, standing instructions, session facts, and
+        active plan. Trims conversation to last N turns (N from memory_horizon).
+        """
+        # Build context blocks for re-injection
         facts_block = self.session_facts.to_context_block()
 
-        refreshed = self.refresher.build_refreshed_context(
-            session_facts_block=facts_block,
-            conversation_turns=self.conversation_history[-4:] if len(self.conversation_history) > 4 else self.conversation_history,
+        # Keep recent conversation turns (trimmed to memory_horizon)
+        keep = self.memory_horizon if self.memory_horizon > 0 else 4
+        trimmed_turns = (
+            self.conversation_history[-keep:]
+            if len(self.conversation_history) > keep
+            else self.conversation_history
         )
 
+        # Build the refreshed context using the refresher
+        refreshed = self.refresher.build_refreshed_context(
+            session_facts_block=facts_block,
+            conversation_turns=trimmed_turns,
+        )
+
+        # Build additional injection blocks that the refresher doesn't handle
+        extra_blocks: list[dict] = []
+
+        # 1. Standing instructions block
+        if self.recency_protection:
+            extra_blocks.append({
+                "role": "user",
+                "content": f"[STANDING INSTRUCTIONS]\n{self.standing_instructions.get_text()}",
+            })
+
+        # 2. Active plan block (if one exists)
+        if self.active_plan:
+            extra_blocks.append({
+                "role": "user",
+                "content": f"[ACTIVE PLAN]\n{self.active_plan}",
+            })
+
+        # 3. Last tool result as a tool-role message (if available)
+        last_call = self.session_facts.last_tool_used
+        last_result = self.session_facts.last_tool_result
+        if last_call and last_result:
+            extra_blocks.append({
+                "role": "tool",
+                "content": last_result[:500],
+                "name": last_call,
+            })
+
+        # Combine: base refreshed context + extra blocks + trimmed turns
+        # The system message + standing instructions + facts are in `refreshed`.
+        # We need to keep the structure: [system, user(context), extra_blocks..., trimmed_turns]
+        # But the refresher already puts standing+facts as a user message after system.
+        # We'll insert extra blocks after the first user message in refreshed:
+        combined: list[dict] = []
+        inserted_extra = False
+        for msg in refreshed:
+            combined.append(msg)
+            if not inserted_extra and msg["role"] == "user":
+                combined.extend(extra_blocks)
+                inserted_extra = True
+
+        # Also ensure trimmed_turns are the conversation history (if not already included)
+        # The refresher already includes conversation_turns at the end, so we need to
+        # handle this properly:
+        # Build: [system, user(standing+facts), extra_blocks..., conversation_turns]
+        combined = [refreshed[0]]  # system
+        if len(refreshed) > 1:
+            combined.append(refreshed[1])  # user standing+facts
+        combined.extend(extra_blocks)
+        if trimmed_turns:
+            combined.extend(trimmed_turns)
+
         # Replace conversation history with refreshed context
-        self.conversation_history = refreshed
+        self.conversation_history = combined
         self.turn_counter.reset()
+        self.active_plan = None
 
         logger.info(f"Context refreshed (refresh #{self.refresher.get_refresh_count()})")
 
@@ -398,6 +511,9 @@ class AgentLoop:
         else:
             self.session_facts.last_tool_result = f"Error: {result.error}"
 
+        # Record tool call in format monitor
+        self.format_monitor.record_tool_call({"name": name, "args": args}, "")
+
         return result
 
     def _parse_tool_call(self, response_text: str) -> Optional[dict]:
@@ -454,7 +570,7 @@ class AgentLoop:
                             # Check if this looks like a tool call
                             if isinstance(data, dict):
                                 tool_name = data.get("tool") or data.get("name") or data.get("function")
-                                if tool_name:
+                                if tool_name and tool_name.lower() not in ("none", "null", "noop", ""):
                                     args = data.get("arguments") or data.get("args") or data.get("parameters") or {}
                                     if isinstance(args, dict):
                                         return {"name": tool_name, "args": args}
@@ -478,11 +594,19 @@ class AgentLoop:
     def _get_tests_passed(self) -> bool | None:
         """Check if the last test execution passed.
 
+        Checks both `test_executor` (formal test runner) and `run_shell`
+        (code execution as verification) tool calls. A successful `run_shell`
+        with exit code 0 counts as tests passed for coding tasks.
+
         Returns True if tests passed, False if failed, None if no tests run.
         """
         for turn in reversed(self.episode.turns):
-            if turn.tool_call and turn.tool_call.get("name") == "test_executor":
-                if turn.tool_result:
+            if turn.tool_call and turn.tool_result:
+                name = turn.tool_call.get("name", "")
+                if name == "test_executor":
+                    return turn.tool_result.get("success", False)
+                if name == "run_shell":
+                    # run_shell success means the code executed without errors
                     return turn.tool_result.get("success", False)
         return None
 

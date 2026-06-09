@@ -36,7 +36,9 @@ class WriteFileTool(BaseTool):
     async def execute(self, path: str, content: str) -> ToolResult:
         """Write content to the given path, creating dirs if needed."""
         try:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
+            dirpath = os.path.dirname(path)
+            if dirpath:
+                os.makedirs(dirpath, exist_ok=True)
             with open(path, "w") as f:
                 f.write(content)
             return ToolResult(
