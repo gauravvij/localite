@@ -1,11 +1,13 @@
 [model]
 name = "gemma4:e4b"
 provider = "ollama"
-max_turns = 5
+max_turns = 20
 memory_horizon = 5
 format_guard = false
 recency_protection = true
 has_thinking_tags = false
 stall_threshold = 3
 base_url = "http://localhost:11434"
-timeout = 180
+timeout = 360
+num_predict = 8192
+tool_call_format = "gemma_native"

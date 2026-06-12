@@ -33,9 +33,10 @@ class PermissionGate:
         step_mode=False (block mode): Collect proposals, submit all at once.
     """
 
-    def __init__(self, console: Optional[Console] = None, step_mode: bool = True):
+    def __init__(self, console: Optional[Console] = None, step_mode: bool = True, auto_approve: bool = False):
         self.console = console or Console()
         self.step_mode = step_mode
+        self.auto_approve = auto_approve
         self._pending_proposals: list[tuple[str, dict]] = []
 
     def propose(
@@ -45,6 +46,7 @@ class PermissionGate:
     ) -> PermissionResult:
         """Propose a tool call for approval.
 
+        In auto_approve mode, approves immediately without prompting.
         In step_mode, prompts the user immediately.
         In block mode, queues the proposal for batch approval.
 
@@ -55,6 +57,8 @@ class PermissionGate:
         Returns:
             PermissionResult with the user's decision.
         """
+        if self.auto_approve:
+            return PermissionResult(decision="approved", modified_tool_call=tool_call)
         if self.step_mode:
             return self._prompt_single(action_description, tool_call)
         else:
@@ -181,3 +185,10 @@ class PermissionGate:
     def set_step_mode(self, enabled: bool):
         """Toggle between step mode and block mode."""
         self.step_mode = enabled
+
+    def set_auto_approve(self, enabled: bool):
+        """Toggle auto_approve mode on/off.
+
+        When enabled, all tool calls are approved without prompting.
+        """
+        self.auto_approve = enabled

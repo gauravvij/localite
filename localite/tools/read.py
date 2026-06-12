@@ -13,7 +13,18 @@ class ReadFileTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Read the contents of a file at the given path."
+        return (
+            "Read the contents of a file at the given path. "
+            "WHEN TO USE: Before editing any file (always read first), to inspect source code, "
+            "config files, logs, or any text file. This is your PRIMARY exploration tool. "
+            "WHEN NOT TO USE: For binary files (images, pickles), for listing directories "
+            "(use list_files instead), for very large files (use max_lines to cap output). "
+            "PARAMETERS: 'path' (required, absolute path to the file), "
+            "'max_lines' (optional, integer, max lines to return). "
+            "EXAMPLE: {\"path\": \"/home/user/project/src/main.py\", \"max_lines\": 100} "
+            "COMMON MISTAKES: Using a relative path that doesn't resolve correctly; "
+            "not using max_lines for known-large files and flooding the context."
+        )
 
     @property
     def parameters(self) -> dict:
@@ -37,13 +48,19 @@ class ReadFileTool(BaseTool):
     async def execute(self, path: str, max_lines: int | None = None) -> ToolResult:
         """Read file content from the given path."""
         try:
-            if not os.path.exists(path):
+            # Resolve relative paths against workdir
+            if not path.startswith('/') and hasattr(self, 'workdir') and self.workdir:
+                resolved_path = os.path.join(self.workdir, path)
+            else:
+                resolved_path = path
+
+            if not os.path.exists(resolved_path):
                 return ToolResult(
                     success=False,
                     output="",
-                    error=f"File not found: {path}",
+                    error=f"File not found: {resolved_path}",
                 )
-            with open(path, "r") as f:
+            with open(resolved_path, "r") as f:
                 if max_lines is not None:
                     lines = []
                     for i, line in enumerate(f):

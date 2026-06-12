@@ -34,6 +34,8 @@ class ModelProfile:
     stall_threshold: int = 3
     base_url: str = "http://localhost:11434"
     timeout: int = 30
+    num_predict: Optional[int] = None
+    tool_call_format: str = "standard"
 
 
 class ConfigLoader:

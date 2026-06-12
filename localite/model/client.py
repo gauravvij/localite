@@ -5,11 +5,15 @@ and proper streaming via SSE.
 """
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import AsyncGenerator, Optional
 
 import httpx
+
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_TIMEOUT = 30.0
@@ -112,6 +116,15 @@ class AsyncOllamaClient:
         if options:
             payload["options"] = options
 
+        # DEBUG: log payload structure before request (not full messages)
+        logger.debug(
+            "CHAT REQUEST — model=%s, num_messages=%d, stream=%s, options=%s",
+            self.model_name,
+            len(messages),
+            stream,
+            options,
+        )
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.post(
@@ -124,9 +137,48 @@ class AsyncOllamaClient:
                     return self._stream_response(response)
                 else:
                     data = response.json()
-                    raw = data.get("message", {}).get("content", "")
+                    msg = data.get("message", {})
+                    raw = msg.get("content", "")
+                    # DEBUG: log raw msg keys and sizes
+                    content_len = len(raw)
+                    thinking_raw = msg.get("thinking", "")
+                    thinking_len = len(thinking_raw)
+                    done_reason = data.get("done_reason", "")
+                    eval_count = data.get("eval_count", 0)
+                    msg_keys = list(msg.keys())
+                    logger.debug(
+                        "CHAT RESPONSE RAW — content_len=%d, thinking_len=%d, "
+                        "done_reason=%s, eval_count=%d, msg_keys=%s",
+                        content_len,
+                        thinking_len,
+                        done_reason,
+                        eval_count,
+                        msg_keys,
+                    )
+                    # Gemma 4 E4B puts tool-call JSON in the native Ollama
+                    # `thinking` field when conversation history is complex.
+                    # Fall through to `thinking` if `content` is empty.
+                    path_taken = "content"
+                    if not raw.strip():
+                        raw = msg.get("thinking", "")
+                        path_taken = "thinking_fallback"
+                    logger.debug(
+                        "CHAT PATH — path=%s, has_thinking_tags=%s",
+                        path_taken,
+                        self.has_thinking_tags,
+                    )
                     if self.has_thinking_tags:
-                        return strip_thinking(raw)
+                        before = len(raw)
+                        stripped = strip_thinking(raw)
+                        after = len(stripped)
+                        if before != after:
+                            logger.debug(
+                                "CHAT STRIP_THINKING — before=%d, after=%d, diff=%d",
+                                before,
+                                after,
+                                before - after,
+                            )
+                        return stripped
                     return raw
 
             except httpx.ConnectError as e:

@@ -267,12 +267,13 @@ def test_standing_instructions_mention_task_complete():
     si = StandingInstructions()
     text = si.get_text()
 
-    # Should mention task_complete
-    assert "task_complete" in text
-
-    # Should describe COMPLETE as final phase
-    assert "FINAL phase" in text or "final phase" in text
-    assert "COMPLETE" in text
+    # Standing instructions no longer contain phase protocol (moved to SYSTEM_PROMPT)
+    # But safety rules should still be intact
+    assert "Safety Rules" in text
+    assert "NEVER hallucinate" in text
+    # SYSTEM_PROMPT should contain task_complete and COMPLETE phase guidance
+    assert "task_complete" in SYSTEM_PROMPT
+    assert "COMPLETE" in SYSTEM_PROMPT
 
 
 def test_system_prompt_has_correct_tool_rules():

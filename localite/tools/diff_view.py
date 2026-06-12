@@ -13,7 +13,21 @@ class DiffViewTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Generate a unified diff between original and new content for a file."
+        return (
+            "Generate a unified diff between original and new content for a file. "
+            "WHEN TO USE: To preview changes before applying them, to show what changed between "
+            "two versions of a file, for code review and documentation of modifications. "
+            "WHEN NOT TO USE: For making actual edits to files (use edit_file or write_file), "
+            "for reading file contents (use read_file), for running shell diff commands (use run_shell). "
+            "PARAMETERS: 'original_content' (required, string, the original file content), "
+            "'new_content' (required, string, the modified file content), "
+            "'filepath' (required, string, file path for display in diff header). "
+            "EXAMPLE: {\"original_content\": \"def old():\", "
+            "\"new_content\": \"def new():\", "
+            "\"filepath\": \"src/utils.py\"} "
+            "COMMON MISTAKES: Passing file paths instead of actual content strings; "
+            "forgetting to include the 'filepath' for proper diff header display."
+        )
 
     @property
     def parameters(self) -> dict:

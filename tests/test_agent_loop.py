@@ -468,8 +468,9 @@ def test_standing_instructions():
     si = StandingInstructions()
     text = si.get_text()
     assert "Standing Instructions" in text
-    assert "EXPLORE" in text
     assert "NEVER hallucinate" in text
+    # Phase protocol ("EXPLORE") is now in SYSTEM_PROMPT, not standing instructions
+    assert "Safety Rules" in text
 
 
 def test_context_refresher():

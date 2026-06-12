@@ -8,13 +8,34 @@ from localite.tools.base import BaseTool, ToolResult, measure_duration
 class RunShellTool(BaseTool):
     """Tool for executing shell commands."""
 
+    def __init__(self, description: str = (
+        "Execute a shell command and capture its output. "
+        "WHEN TO USE: Installing packages (pip install), running scripts (python train.py), "
+        "building projects (make, cargo build), checking file sizes, any command-line operation. "
+        "WHEN NOT TO USE: For listing directory contents (use list_files instead — it auto-excludes "
+        "noise dirs), for reading file contents (use read_file), for running tests (use test_executor). "
+        "PARAMETERS: 'command' (required, the shell command string), 'timeout' (optional, int, "
+        "seconds, default 30), 'workdir' (optional, string, working directory). "
+        "EXAMPLE: {\"command\": \"pip install torch==2.0.1\", \"timeout\": 120} "
+        "COMMON MISTAKES: Running destructive commands (rm -rf, kill, Docker stop) without "
+        "confirmation; not setting timeout for long-running operations causing hangs; "
+        "using run_shell to list directories when list_files is better suited; "
+        "forgetting that stderr is mixed into output (exit code indicates success/failure). "
+        "SAFETY: Commands run on the host system — never run destructive operations."
+    )):
+        self._description = description
+
     @property
     def name(self) -> str:
         return "run_shell"
 
     @property
     def description(self) -> str:
-        return "Execute a shell command and capture its output."
+        return self._description
+
+    @description.setter
+    def description(self, value: str) -> None:
+        self._description = value
 
     @property
     def parameters(self) -> dict:

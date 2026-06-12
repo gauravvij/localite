@@ -39,6 +39,7 @@ Thumbs.db
 !*.cfg
 !*.ini
 !*.txt
+!swe_runner.py
 !.gitignore
 
 # Results

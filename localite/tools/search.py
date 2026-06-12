@@ -15,7 +15,22 @@ class GrepSearchTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Search for a text pattern in files using regex or literal matching."
+        return (
+            "Search for a text pattern in files using regex or literal matching. "
+            "WHEN TO USE: Finding where functions are defined or called, searching for import "
+            "statements, locating configuration values, discovering code patterns across the codebase. "
+            "Essential when you don't know which file contains a particular identifier. "
+            "WHEN NOT TO USE: For reading file contents (use read_file), for listing directories "
+            "(use list_files), for running shell commands (use run_shell). "
+            "PARAMETERS: 'pattern' (required, regex pattern string), 'path' (required, file or "
+            "directory to search), 'glob_pattern' (optional, file filter like '*.py'), "
+            "'max_results' (optional, int, default 50). "
+            "EXAMPLE: {\"pattern\": \"def train_\", \"path\": \"/home/user/project/src\", "
+            "\"glob_pattern\": \"*.py\", \"max_results\": 20} "
+            "COMMON MISTAKES: Using glob syntax in 'pattern' (it's regex, not glob); "
+            "forgetting the pattern is case-insensitive; not using 'glob_pattern' to filter "
+            "relevant file types; setting max_results too low and missing matches."
+        )
 
     @property
     def parameters(self) -> dict:

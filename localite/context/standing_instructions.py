@@ -1,6 +1,6 @@
 """Standing instructions — persistent rules injected at context refresh."""
 
-STANDING_INSTRUCTIONS = """## Standing Instructions
+STANDING_INSTRUCTIONS = """## Standing Instructions — Core Rules & Safety
 
 ### Core Rules
 1. NEVER hallucinate. If you do not know, research or inspect the relevant files first.
@@ -9,31 +9,6 @@ STANDING_INSTRUCTIONS = """## Standing Instructions
 4. Prefer existing tools, code, scripts, and workflows over inventing new ones.
 5. Before editing, inspect neighboring code and preserve local conventions.
 6. Keep investigating until you understand the root cause; do not hide issues with patches.
-
-### Output Format
-You MUST respond with valid JSON tool calls when you want to perform an action:
-```json
-{
-  "thought": "Your reasoning about what to do next",
-  "tool": "tool_name",
-  "arguments": {
-    "param1": "value1"
-  }
-}
-```
-
-Available tools are described in the system prompt. ONLY use tools that exist.
-
-### Phase Protocol
-You are operating in a 5-phase loop:
-- EXPLORE: Read files, search for patterns, understand the codebase
-- PLAN: Formulate a plan based on your exploration
-- EXECUTE: Use tools to make changes
-- VERIFY: Run tests to confirm changes work
-- ITERATE: If tests fail, fix and re-run
-- COMPLETE: When the task is done, call the **task_complete** tool with a status, reason_code, and summary of what was accomplished. This is your FINAL phase — you must call task_complete before the loop ends. Do NOT exit without calling task_complete.
-
-Proceed through phases in order. Signal phase transitions by stating your phase. When the loop transitions to COMPLETE phase, you MUST call task_complete in your very next response.
 
 ### Safety Rules
 - Never delete or modify files outside the project directory

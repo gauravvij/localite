@@ -5,6 +5,7 @@ import logging
 import re
 from typing import Any, Optional
 
+from localite.code_index import CodeIndex
 from localite.loop.phases import Phase, next_phase
 from localite.loop.turn_counter import TurnCounter
 from localite.config import ModelProfile
@@ -19,27 +20,121 @@ from localite.episodes.store import EpisodeStore
 
 logger = logging.getLogger(__name__)
 
-# Default system prompt template
-SYSTEM_PROMPT = """You are localite, a fully local AI coding agent. You help users with codebase
-understanding, modification, testing, and debugging.
+# Maximum characters for tool output in conversation history
+# Prevents context flooding from large tool results (e.g. ls -R of venv)
+MAX_TOOL_OUTPUT_CHARS = 32000
 
-You have access to the following tools:
+# Output format templates — profile-driven selection
+# NOTE: The {{ }} are Jinja2-style escaping for .format() — they produce literal { } in the final output.
+OUTPUT_FORMAT_STANDARD = """  - read_file: {{"path": "/home/user/project/src/main.py", "max_lines": 100}}
+  - edit_file: {{"path": "/home/user/project/train.py", "search_text": "lr=0.01", "replace_text": "lr=0.001"}}
+  - write_file: {{"path": "/home/user/project/src/utils.py", "content": "import os\\nprint('hello')\\n"}}
+  - run_shell: {{"command": "pip install torch", "timeout": 120}}
+  - list_files: {{"path": "/home/user/project/src", "depth": 2}}
+  - grep_search: {{"pattern": "def train_", "path": ".", "glob_pattern": "*.py"}}
+  - test_executor: {{"path": "tests/", "timeout": 60}}
+  - task_complete: {{"status": "success", "reason_code": "tests_passing", "summary": "Fixed bug in train.py"}}"""
+
+OUTPUT_FORMAT_GEMMA_NATIVE = """  - read_file: {{"tool_name": "read_file", "params": {{"path": "/home/user/project/src/main.py", "max_lines": 100}}}}
+  - edit_file: {{"tool_name": "edit_file", "params": {{"path": "/home/user/project/train.py", "search_text": "lr=0.01", "replace_text": "lr=0.001"}}}}
+  - write_file: {{"tool_name": "write_file", "params": {{"path": "/home/user/project/src/utils.py", "content": "import os\\nprint('hello')\\n"}}}}
+  - run_shell: {{"tool_name": "run_shell", "params": {{"command": "pip install torch", "timeout": 120}}}}
+  - list_files: {{"tool_name": "list_files", "params": {{"path": "/home/user/project/src", "depth": 2}}}}
+  - grep_search: {{"tool_name": "grep_search", "params": {{"pattern": "def train_", "path": ".", "glob_pattern": "*.py"}}}}
+  - test_executor: {{"tool_name": "test_executor", "params": {{"path": "tests/", "timeout": 60}}}}
+  - task_complete: {{"tool_name": "task_complete", "params": {{"status": "success", "reason_code": "tests_passing", "summary": "Fixed bug in train.py"}}}}"""
+
+# Default system prompt template
+# NOTE: The {{ }} are Jinja2-style escaping for .format() — they produce literal { } in the final output.
+# The {tool_descriptions} placeholder is replaced at runtime with tool descriptions.
+# The {output_format} placeholder is replaced with the profile-appropriate format template.
+SYSTEM_PROMPT = """You are localite, a fully local AI coding agent. You help users with codebase
+understanding, modification, testing, and debugging. You operate through a set of tools that
+interact with the filesystem, shell, and test infrastructure.
+
+## Available Tools
+
 {tool_descriptions}
 
 ## Output Format
-When you want to perform an action, respond with JSON:
-{{"thought": "Your reasoning", "tool": "tool_name", "arguments": {{"key": "value"}}}}
 
-When you want to communicate with the user (no tool call needed), respond with:
+CRITICAL: You MUST respond with valid JSON tool calls when you want to perform an action.
+Parameter names must match EXACTLY — do NOT invent or substitute parameter names.
+
+### Action (tool call) — real examples with correct parameter names:
+{output_format}
+
+### Communication with user (no tool call needed):
 {{"thought": "Your reasoning", "message": "Your message to the user"}}
 
-## Rules
-1. Always explore before acting. Read files before modifying them.
-2. Propose a plan before executing.
-3. Use **edit_file** to make code changes (add docstrings, fix bugs, refactor).
-4. Run tests after making changes using **test_executor**.
-5. Stay within the turn limit. Let the user know when you need more turns.
-6. When you are done with ALL tasks (code changes + tests passing), transition to COMPLETE and call **task_complete**.
+DO NOT send a "message" when you are supposed to be making tool calls in the EXECUTE phase.
+DO NOT invent parameter names — always check the tool description for correct names.
+
+## Phase Protocol
+
+You operate in a 5-phase loop. Each phase has a specific purpose:
+
+1. **EXPLORE** — Read files, search for patterns, understand the codebase before making changes.
+   Always start here: list_files → read_file → grep_search to understand structure.
+
+2. **PLAN** — Formulate a plan based on your exploration. State which files need changes and what
+   specific modifications are needed.
+
+3. **EXECUTE** — Use tools to make changes. This is the ONLY phase where you make file modifications.
+   DO NOT send "message" responses in EXECUTE — only make tool calls.
+   If you don't know which file to read, use grep_search for identifiers from the task.
+
+4. **VERIFY** — Run tests to confirm changes work. Use test_executor after every change.
+
+5. **ITERATE** — If tests fail, diagnose and fix. If tests pass, proceed to COMPLETE.
+   After COMPLETE, call task_complete — this is your FINAL action.
+
+Transitions: EXPLORE → PLAN → EXECUTE → VERIFY → ITERATE → (back to EXECUTE or COMPLETE)
+
+## Anti-Pattern Rules — NEVER do these
+
+1. NEVER invent parameter names. Every tool has exact parameter names documented in its
+   description. Use them as-is. For example, list_files uses "path" NOT "directory";
+   edit_file uses "search_text"/"replace_text" NOT "old_value"/"new_value".
+
+2. NEVER use or guess a parameter because the description says "key": "value". There is no
+   "key" parameter in any tool — every tool has specific named parameters (path, content,
+   command, pattern, etc.).
+
+3. NEVER send a "message" response in the EXECUTE phase. In EXECUTE, you must call tools.
+   Save commentary for EXPLORE or PLAN phases.
+
+4. NEVER skip read_file before edit_file. Always read a file before modifying it, unless
+   you already have its content from a recent read.
+
+5. NEVER call task_complete before running tests. Always verify with test_executor first.
+
+6. NEVER hallucinate file paths or code content. If unsure, use list_files or grep_search
+   to discover the actual project structure.
+
+7. NEVER run destructive shell commands (rm -rf, kill, Docker stop) without explicit
+   user confirmation.
+
+## Exploration Mandate
+
+Before modifying any files, you MUST:
+1. Use list_files to understand project structure
+2. Use read_file to read relevant source files
+3. Use grep_search to find identifiers, function definitions, or configuration values
+4. Only then use edit_file or write_file to make changes
+
+If you don't know which file to modify for a given task:
+  - Use grep_search for key terms from the task description
+  - Use list_files to explore directory structure
+  - Read config files and entry points to understand the codebase
+
+For worst-case scenarios (no clear file identified):
+  - Start with list_files at the project root with depth=2
+  - grep_search for identifiers mentioned in the task
+  - Read any README or documentation files first
+
+When you are done with ALL tasks (code changes made + tests passing),
+transition to COMPLETE and call **task_complete**.
 """
 
 
@@ -60,11 +155,13 @@ class AgentLoop:
         standing_instructions: Optional[StandingInstructions] = None,
         max_iterations: int = 3,
         memory_store: Optional['EpisodicMemoryStore'] = None,
+        code_index: Optional['CodeIndex'] = None,
     ):
         self.model = model_client
         self.tools = tools
         self.gate = permission_gate
         self.store = episode_store
+        self.code_index = code_index
         self.standing_instructions = standing_instructions or StandingInstructions()
         self.max_iterations = max_iterations
 
@@ -100,7 +197,8 @@ class AgentLoop:
 
         # Init refresher using _get_tool_descriptions for the initial system prompt
         tool_descs = self._get_tool_descriptions()
-        system_prompt = SYSTEM_PROMPT.format(tool_descriptions=tool_descs)
+        output_fmt = OUTPUT_FORMAT_GEMMA_NATIVE if self.profile and self.profile.tool_call_format == "gemma_native" else OUTPUT_FORMAT_STANDARD
+        system_prompt = SYSTEM_PROMPT.format(tool_descriptions=tool_descs, output_format=output_fmt)
         self.refresher = ContextRefresher(
             system_prompt_template=system_prompt,
             standing_instructions=self.standing_instructions.get_text(),
@@ -307,13 +405,62 @@ class AgentLoop:
         Returns:
             True if the phase completed normally, False if cancelled.
         """
+        # Deduplication: if conversation_history has grown large, compress the
+        # original full task message to avoid duplicating with the compressed
+        # task that _build_context() now injects in the phase guidance.
+        if (
+            len(self.conversation_history) >= 3
+            and self.conversation_history
+            and self.conversation_history[0].get("role") == "user"
+            and "content" in self.conversation_history[0]
+        ):
+            total_ch = sum(len(m.get("content", "")) for m in self.conversation_history[1:])
+            if total_ch > 15000:
+                original = self.conversation_history[0]["content"]
+                compressed = self._compress_objective(original, max_chars=300)
+                if len(compressed) < len(original):
+                    self.conversation_history[0] = {
+                        "role": "user",
+                        "content": f"[Task compressed] {compressed}",
+                    }
+                    logger.debug(
+                        "Compressed conversation_history[0]: %d chars -> %d chars",
+                        len(original), len(compressed),
+                    )
+
         # Build context
         context = self._build_context()
         context.extend(self.conversation_history)
 
         # Get model response
         try:
-            response_text = await self.model.chat(context, stream=False)
+            # Pass options (e.g. num_predict) from profile
+            chat_options = {}
+            if self.profile and self.profile.num_predict is not None:
+                chat_options["num_predict"] = self.profile.num_predict
+            options_payload = {"options": chat_options} if chat_options else {}
+
+            # DEBUG: log context structure before chat call
+            roles = [m.get("role", "?") for m in context]
+            total_chars = sum(len(m.get("content", "")) for m in context)
+            logger.debug(
+                "EXECUTE PHASE — context messages=%d, roles=%s, "
+                "total_content_chars=%d, chat_options=%s, options_payload=%s",
+                len(context),
+                roles,
+                total_chars,
+                chat_options,
+                options_payload,
+            )
+
+            response_text = await self.model.chat(context, stream=False, **options_payload)
+
+            # DEBUG: log raw response after chat
+            logger.debug(
+                "EXECUTE PHASE — response_text length=%d, first_500_chars=%s",
+                len(response_text),
+                response_text[:500],
+            )
         except (ConnectionError, TimeoutError) as e:
             logger.error(f"Model error: {e}")
             self.conversation_history.append({
@@ -339,6 +486,22 @@ class AgentLoop:
 
         # Parse and handle tool calls
         tool_call = self._parse_tool_call(response_text)
+
+        # DEBUG: log parse_tool_call result
+        if tool_call:
+            logger.debug(
+                "EXECUTE PHASE — parsed tool_call: name=%s, args_keys=%s, full_arguments=%s",
+                tool_call.get("name", "?"),
+                list(tool_call.get("args", tool_call.get("arguments", {})).keys()),
+                str(tool_call.get("args", tool_call.get("arguments", {})))[:300],
+            )
+        else:
+            logger.debug(
+                "EXECUTE PHASE — No tool call parsed (stall_count=%d, stall_threshold=%d)",
+                self.stall_count,
+                self.profile.stall_threshold if self.profile else 3,
+            )
+
         if tool_call:
             turn.tool_call = tool_call
 
@@ -381,9 +544,12 @@ class AgentLoop:
                     "role": "assistant",
                     "content": response_text,
                 })
+                tool_content = result.output or result.error or ""
+                if len(tool_content) > MAX_TOOL_OUTPUT_CHARS:
+                    tool_content = tool_content[:MAX_TOOL_OUTPUT_CHARS] + "\n\n[Output truncated at 32000 characters]"
                 self.conversation_history.append({
                     "role": "tool",
-                    "content": result.output or result.error or "",
+                    "content": tool_content,
                     "name": modified_call.get("name", "tool"),
                 })
             elif permission.decision == "skipped":
@@ -408,9 +574,12 @@ class AgentLoop:
                     "role": "assistant",
                     "content": response_text,
                 })
+                tool_content = result.output or result.error or ""
+                if len(tool_content) > MAX_TOOL_OUTPUT_CHARS:
+                    tool_content = tool_content[:MAX_TOOL_OUTPUT_CHARS] + "\n\n[Output truncated at 32000 characters]"
                 self.conversation_history.append({
                     "role": "tool",
-                    "content": result.output or result.error or "",
+                    "content": tool_content,
                     "name": modified_call.get("name", "tool"),
                 })
         else:
@@ -421,21 +590,317 @@ class AgentLoop:
                 "content": response_text,
             })
 
+        # Progressive guidance: after list_files returns directory structure, help the model navigate
+        # Uses multi-strategy approach based on what the model is seeing:
+        #   Root level → suggest exploring source directories (not reading root-level noise files)
+        #   Inside src/ → suggest reading the most relevant .py file
+        #   Task mentions identifiers → suggest grep_search
+        if tool_call and tool_call.get("name") == "list_files":
+            last_msg = self.conversation_history[-1] if self.conversation_history else None
+            if last_msg and last_msg.get("role") == "tool":
+                last_output = last_msg.get("content", "")
+                if ".py" not in last_output and "(dir)" not in last_output:
+                    pass  # No actionable content to guide on
+                else:
+                    # Parse directory tree output to reconstruct structure
+                    # Format from ListFilesTool._list_dir:
+                    #   /dirname/ (dir)       (depth 0, 0 indent)
+                    #     subdir/ (dir)       (depth 1, 2 indent)
+                    #       file.py (file)      (depth 2, 4 indent)
+                    lines = last_output.split("\n")
+                    dir_stack = []
+                    py_files_with_paths = []  # (full_relative_path, filename)
+                    root_dirs = set()          # Directory names at depth 0
+
+                    # Directories that are NOT source code — skip suggestions into these
+                    NOISE_DIRS = frozenset({
+                        'examples', 'docs', 'doc', 'benchmarks', 'scripts',
+                        'extras', 'contrib', 'tutorials', 'archive',
+                        'docker', 'dockerfiles', 'tools',
+                        'build_tools', 'build', 'source',
+                        '.circleci', '.github', '.gitlab',
+                        'whats_new', 'news', 'changes',
+                        'data',  # test data directory, not source code
+                    })
+                    # Root-level files that are NOT relevant source code
+                    NOISE_FILES = frozenset({
+                        'versioneer.py', 'setup.cfg', 'tox.ini', 'Makefile',
+                        'appveyor.yml', 'version.py', '_version.py', '.gitignore',
+                        'requirements.txt', 'setup.py', 'conftest.py', 'conf.py',
+                        'test_helpers.py', 'constraints.py', 'meta.py',
+                    })
+
+                    for line in lines:
+                        stripped = line.lstrip(" ")
+                        indent_chars = len(line) - len(stripped)
+                        depth = indent_chars // 2 if indent_chars > 0 else 0
+                        content = stripped.strip()
+
+                        if not content:
+                            continue
+
+                        if content.endswith("(dir)"):
+                            dirname = content.rsplit(" (dir)", 1)[0].strip("/")
+                            while dir_stack and dir_stack[-1][1] >= depth:
+                                dir_stack.pop()
+                            dir_stack.append((dirname, depth))
+                            if depth == 0 and not dirname.startswith('.'):
+                                root_dirs.add(dirname)
+                        elif content.endswith("/"):
+                            dirname = content.rstrip("/")
+                            while dir_stack and dir_stack[-1][1] >= depth:
+                                dir_stack.pop()
+                            dir_stack.append((dirname, depth))
+                            if depth == 0 and not dirname.startswith('.'):
+                                root_dirs.add(dirname)
+                        elif content.endswith("(file)"):
+                            filename = content.rsplit(" (file)", 1)[0].strip()
+                            if filename.endswith(".py"):
+                                while dir_stack and dir_stack[-1][1] >= depth:
+                                    dir_stack.pop()
+                                dir_prefix = "/".join(d[0] for d in dir_stack)
+                                full_path = f"{dir_prefix}/{filename}" if dir_prefix else filename
+                                py_files_with_paths.append((full_path, filename))
+
+                    # === Strategy Selection ===
+                    guidance_msg = None
+                    source_dirs = sorted(d for d in root_dirs
+                                         if d not in NOISE_DIRS and not d.startswith('.'))
+                    # Check the path the model listed — if it listed a subdir, we're not at root
+                    list_files_args = (tool_call.get("arguments") or tool_call.get("args") or {}) if isinstance(tool_call, dict) else {}
+                    # Model often uses "directory" instead of "path" or other invented keys — check
+                    listed_path = list_files_args.get("path") or list_files_args.get("directory") or "."
+                    if listed_path in (".", "", "/"):
+                        # Generic fallback: check all arg values for anything that looks like a path
+                        for val in list_files_args.values():
+                            if isinstance(val, str) and val not in (".", "", "/") and len(val) > 1:
+                                listed_path = val
+                                break
+                    is_at_root = listed_path in (".", "", "/")
+                    # If depth > 1, the tree shows nested structure — only one result per level
+                    listed_depth = list_files_args.get("depth", 1)
+                    if isinstance(listed_depth, str):
+                        try:
+                            listed_depth = int(listed_depth)
+                        except (ValueError, TypeError):
+                            pass
+
+                    # Strategy A: At repo root with source directories — suggest exploring (not reading root-level files)
+                    if is_at_root and source_dirs:
+                        if 'src' in source_dirs:
+                            guidance_msg = (
+                                "[GUIDANCE] The project source code is in 'src/'. "
+                                "Use list_files('src') to explore it."
+                            )
+                        elif 'lib' in source_dirs:
+                            guidance_msg = (
+                                "[GUIDANCE] The project source code is in 'lib/'. "
+                                "Use list_files('lib') to explore it."
+                            )
+                        else:
+                            guidance_msg = (
+                                f"[GUIDANCE] Explore '{source_dirs[0]}' "
+                                f"with list_files('{source_dirs[0]}') to find source code."
+                            )
+
+                    # Strategy B: Inside a directory with .py files — suggest reading relevant ones
+                    if guidance_msg is None and py_files_with_paths:
+                        # Filter noise files and files inside noise directories
+                        filtered = [
+                            (p, f) for p, f in py_files_with_paths
+                            if f not in NOISE_FILES
+                            and not f.startswith('_')
+                            and not any(nd in p.split('/') for nd in NOISE_DIRS)
+                        ]
+                        # Also filter tests/ unless we're already inside tests/
+                        is_in_tests = any('tests' in d[0] for d in dir_stack)
+                        if not is_in_tests:
+                            filtered = [(p, f) for p, f in filtered
+                                        if not p.startswith('tests/') and not p.startswith('test/')]
+
+                        if filtered:
+                            # --- Ctags-first guidance (Strategy B1) ---
+                            # Extract meaningful identifiers from the NON-lowercased objective
+                            # (preserving case for ctags lookup), then query CodeIndex.
+                            # If ctags resolves an identifier to a file, use precise guidance.
+                            # Otherwise fall through to keyword scoring (Strategy B2).
+                            objective = getattr(self.session_facts, 'current_objective', '')
+                            ctags_guidance = None
+                            if self.code_index is not None and not self.code_index._disabled:
+                                # Extract PascalCase, camelCase, and snake_case tokens ≥3 chars
+                                identifiers = set()
+                                for m in re.finditer(r'[A-Z][a-z0-9]+[A-Za-z0-9]*|[a-z]+_[a-z]+[a-z0-9_]*|[a-z][a-z0-9]{2,}', objective):
+                                    identifiers.add(m.group())
+                                # Filter out Python keywords and common noise words
+                                filtered_identifiers = frozenset({
+                                    'the', 'from', 'import', 'def', 'class', 'return', 'if', 'for',
+                                    'with', 'as', 'self', 'True', 'False', 'None', 'print', 'len',
+                                    'range', 'type', 'isinstance', 'hasattr', 'setattr', 'getattr',
+                                    'open', 'read', 'write', 'append', 'items', 'keys', 'values',
+                                    'upper', 'lower', 'replace', 'split', 'join', 'strip', 'format',
+                                    'encode', 'decode', 'find', 'index', 'count', 'pop', 'remove',
+                                    'insert', 'extend', 'sort', 'reverse', 'copy', 'clear', 'update',
+                                    'add', 'discard', 'difference', 'intersection', 'union',
+                                    'symmetric_difference',
+                                })
+                                for ident in sorted(identifiers, key=len, reverse=True):
+                                    if ident.lower() in filtered_identifiers:
+                                        continue
+                                    matches = self.code_index.lookup(ident)
+                                    if matches:
+                                        # Pick first Python file from matches
+                                        best_file = None
+                                        for fp, _ln, _kind in matches:
+                                            if fp.endswith('.py'):
+                                                best_file = fp
+                                                break
+                                        if best_file is None:
+                                            best_file = matches[0][0]
+                                        ctags_guidance = (
+                                            f"[GUIDANCE] '{ident}' is defined in {best_file}. "
+                                            f"Read it with read_file."
+                                        )
+                                        break  # Use first matching identifier
+                            if ctags_guidance:
+                                guidance_msg = ctags_guidance
+                            else:
+                                # --- Fallback: keyword scoring (Strategy B2, unchanged logic) ---
+                                obj_lower = objective.lower()
+                                obj_terms = set(re.findall(r'[a-zA-Z][a-zA-Z0-9_]{2,}', obj_lower))
+                                common_words = frozenset({
+                                    'write', 'file', 'type', 'data', 'code', 'test', 'error', 'this', 'that',
+                                    'from', 'with', 'have', 'the', 'make', 'done', 'need', 'use', 'get', 'set',
+                                    'run', 'list', 'read', 'show', 'find', 'check', 'work', 'call', 'name',
+                                    'path', 'line', 'text', 'info', 'node', 'base', 'size', 'page', 'more',
+                                    'some', 'each', 'also', 'just', 'like', 'way', 'part', 'used', 'will',
+                                    'can', 'should', 'would', 'could', 'does', 'when', 'than', 'then', 'now',
+                                })
+                                key_terms = set()
+                                generic_terms = set()
+                                for t in obj_terms:
+                                    if t in common_words:
+                                        generic_terms.add(t)
+                                    elif any(c.isupper() for c in t):
+                                        key_terms.add(t)
+                                    elif any(c.isdigit() for c in t):
+                                        key_terms.add(t)
+                                    elif '_' in t:
+                                        key_terms.add(t)
+                                    elif len(t) > 6:
+                                        key_terms.add(t)
+                                    else:
+                                        generic_terms.add(t)
+                                target_path = filtered[0][0]
+                                best_score = 0
+                                for fp, fn in filtered:
+                                    fn_stem = fn.lower().replace('.py', '')
+                                    fp_lower = fp.lower()
+                                    score = 0
+                                    for term in key_terms:
+                                        if term in fn_stem or fn_stem in term:
+                                            score += 10
+                                        if term in fp_lower:
+                                            score += 3
+                                    for term in generic_terms:
+                                        if term in fn_stem or fn_stem in term:
+                                            score += 2
+                                        if term in fp_lower:
+                                            score += 1
+                                    if score > best_score:
+                                        best_score = score
+                                        target_path = fp
+                                if best_score >= 12:
+                                    guidance_msg = (
+                                        f"[GUIDANCE] Read {target_path} "
+                                        f"with read_file to understand the code."
+                                    )
+                        # Strategy C: Task-aware grep guidance — extract identifiers from objective
+                    # Runs BEFORE generic subdirectory fallback because grep is more targeted
+                    if guidance_msg is None:
+                        objective = getattr(self.session_facts, 'current_objective', '')
+                        test_names = getattr(self.session_facts, 'test_id_hints', [])
+                        search_terms = []
+                        if objective:
+                            terms = re.findall(
+                                r'[A-Z][a-z]+[A-Za-z]*|\b[a-z]+_[a-z]+\b',
+                                objective
+                            )
+                            common_words = frozenset({
+                                'this', 'that', 'with', 'from', 'have', 'the',
+                                'file', 'test', 'code', 'data', 'type', 'error',
+                                'should', 'would', 'could', 'does', 'make',
+                            })
+                            meaningful = [
+                                t for t in terms if len(t) > 3
+                                and t.lower() not in common_words
+                            ]
+                            if meaningful:
+                                search_terms = meaningful
+                                guidance_msg = (
+                                    f"[GUIDANCE] The task mentions '{meaningful[0]}'. "
+                                    f"Use grep_search('{meaningful[0]}') to locate relevant code."
+                                )
+                        # If objective terms look like camelCase identifiers, also check test_id_hints
+                        if guidance_msg is None and test_names:
+                            guidance_msg = (
+                                f"[GUIDANCE] The tests mention '{test_names[0]}'. "
+                                f"Use grep_search('{test_names[0]}') to locate relevant code."
+                            )
+
+                    # Strategy D: Inside a directory with .py files but no strong match — suggest subdirectory exploration
+                    if guidance_msg is None and py_files_with_paths:
+                        guidance_msg = (
+                            "[GUIDANCE] Use list_files to explore subdirectories "
+                            "for source code."
+                        )
+
+                    # Final fallback
+                    if guidance_msg is None:
+                        guidance_msg = (
+                            "[GUIDANCE] Use read_file to explore source files, "
+                            "or grep_search to find relevant code."
+                        )
+
+                    self.conversation_history.append({
+                        "role": "user",
+                        "content": guidance_msg,
+                    })
+                    logger.debug(f"Progressive guidance injected: {guidance_msg[:120]}")
+
         # Record turn in episode and increment counter
         self.episode.turns.append(turn)
         self.turn_counter.increment()
 
         return True
 
+    def _compress_objective(self, objective: str, max_chars: int = 300) -> str:
+        """Compress a task objective to max_chars, preserving whole sentences.
+
+        Returns a compact string suitable for injection near the generation point.
+        """
+        if len(objective) <= max_chars:
+            return objective
+        # Truncate at sentence boundary within max_chars
+        truncated = objective[:max_chars]
+        # Find last sentence-ending punctuation
+        for sep in (". ", "!\n", "?\n", ".\n", "!", "?"):
+            last = truncated.rfind(sep)
+            if last > max_chars * 0.6:  # only if we captured meaningful content
+                return truncated[:last + 1]
+        # Fall back to ellipsis
+        return truncated.rstrip() + "..."
+
     def _build_context(self) -> list[dict]:
         """Construct the full context for the model.
 
         Includes: system prompt, standing instructions (if recency_protection),
-        session facts, active plan (if any), and conversation history (trimmed).
+        session facts, active plan (if any), compressed task objective,
+        phase-specific guidance, and conversation history (trimmed).
         """
         # Build the core system message using _get_tool_descriptions
         tool_descs = self._get_tool_descriptions()
-        system_prompt = SYSTEM_PROMPT.format(tool_descriptions=tool_descs)
+        output_fmt = OUTPUT_FORMAT_GEMMA_NATIVE if self.profile and self.profile.tool_call_format == "gemma_native" else OUTPUT_FORMAT_STANDARD
+        system_prompt = SYSTEM_PROMPT.format(tool_descriptions=tool_descs, output_format=output_fmt)
 
         # Append recent session line if memory store available
         if self.memory_store:
@@ -466,13 +931,15 @@ class AgentLoop:
         # Inject current phase indicator — gives the model concrete guidance per phase
         phase = self.current_phase.value.upper()
         if phase == "EXPLORE":
-            guidance = "Read files with read_file or search with grep_search to understand the code."
+            guidance = "First use list_files to find the relevant files, then use read_file to read their CONTENTS. Do NOT leave this phase until you have read the source files that need to be changed."
         elif phase == "PLAN":
             guidance = "Formulate a clear step-by-step plan for what you need to change."
         elif phase == "EXECUTE":
             guidance = (
+                "You are in the EXECUTE phase — output a JSON tool call now. "
                 "Use **edit_file** to make code changes (add docstrings, fix bugs, refactor). "
-                "Do NOT skip this phase — you MUST modify the file(s) before moving on."
+                "Do NOT skip this phase — you MUST call a tool and modify the file(s) before moving on. "
+                "Respond with: {\"thought\": \"...\", \"tool\": \"tool_name\", \"arguments\": {...}}"
             )
         elif phase == "VERIFY":
             guidance = "Run tests with **test_executor** to confirm your changes work."
@@ -485,9 +952,14 @@ class AgentLoop:
             )
         else:
             guidance = ""
+        # Inject compressed task objective so it's always near the generation point
+        task_obj = self.session_facts.current_objective
+        compressed_task = self._compress_objective(task_obj) if task_obj else ""
+        task_block = f"\n[ACTIVE TASK]\n{compressed_task}" if compressed_task else ""
+
         messages.append({
             "role": "user",
-            "content": f"[CURRENT PHASE: {phase}]\n"
+            "content": f"[CURRENT PHASE: {phase}]{task_block}\n"
                        f"You are in the {phase} phase. {guidance}",
         })
 
@@ -517,8 +989,8 @@ class AgentLoop:
             self.format_monitor.reset()
             return True
 
-        # 2. Format decay (always monitored for a coding agent)
-        if self.format_monitor.should_refresh():
+        # 2. Format decay (only when format_guard is enabled)
+        if self.format_guard and self.format_monitor.should_refresh():
             logger.info(
                 f"Format degradation detected (avg={self.format_monitor.average():.2f}), "
                 f"triggering refresh"
@@ -551,7 +1023,8 @@ class AgentLoop:
         # Build the refreshed context using the refresher
         # Re-build the system prompt with current tool descriptions (may have demoted tools)
         tool_descs = self._get_tool_descriptions()
-        system_prompt = SYSTEM_PROMPT.format(tool_descriptions=tool_descs)
+        output_fmt = OUTPUT_FORMAT_GEMMA_NATIVE if self.profile and self.profile.tool_call_format == "gemma_native" else OUTPUT_FORMAT_STANDARD
+        system_prompt = SYSTEM_PROMPT.format(tool_descriptions=tool_descs, output_format=output_fmt)
         if self.memory_store:
             recent_line = self.memory_store.get_recent_summary_line()
             if recent_line:
@@ -643,6 +1116,7 @@ class AgentLoop:
             "command_line": "command",
             "timeout_seconds": "timeout",
             "timeout_sec": "timeout",
+            "argument": "path",
         }
 
         tool_params = tool.parameters.get("properties", {})
@@ -735,6 +1209,9 @@ class AgentLoop:
                     self.episode.files_changed.append(file_path)
                 if file_path not in self.session_facts.files_created:
                     self.session_facts.files_created.append(file_path)
+                # Incremental re-index for ctags CodeIndex
+                if self.code_index is not None and not self.code_index._disabled:
+                    self.code_index.reindex_file(file_path)
 
         return result
 
@@ -791,9 +1268,9 @@ class AgentLoop:
                             data = json.loads(text[start:end])
                             # Check if this looks like a tool call
                             if isinstance(data, dict):
-                                tool_name = data.get("tool") or data.get("name") or data.get("function")
+                                tool_name = data.get("tool") or data.get("tool_name") or data.get("name") or data.get("function")
                                 if tool_name and tool_name.lower() not in ("none", "null", "noop", ""):
-                                    args = data.get("arguments") or data.get("args") or data.get("parameters") or {}
+                                    args = data.get("arguments") or data.get("args") or data.get("tool_args") or data.get("params") or data.get("parameters") or {}
                                     if isinstance(args, dict):
                                         return {"name": tool_name, "args": args}
                                     elif isinstance(args, str):
@@ -842,3 +1319,21 @@ class AgentLoop:
             "files_changed": self.episode.files_changed if self.episode else [],
             "tool_stats": self.tool_stats,
         }
+
+"""AgentLoop — the core 5-phase agent loop."""
+
+import json
+import logging
+import re
+from typing import Any, Optional
+
+from localite.loop.phases import Phase, next_phase
+from localite.loop.turn_counter import TurnCounter
+from localite.config import ModelProfile
+from localite.context.buffer import SessionFacts
+from localite.context.refresh import ContextRefresher
+from localite.context.format_monitor import FormatMonitor
+from localite.context.standing_instructions import StandingInstructions
+from localite.model.client import AsyncOllamaClient
+from localite.permissions.gate import PermissionGate, PermissionResult
+from localite.episodes.model import Episode, Turn

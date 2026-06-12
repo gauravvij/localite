@@ -13,7 +13,23 @@ class EditFileTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Edit a file by finding and replacing text. Use this to add docstrings, fix bugs, refactor code, or make any targeted change to an existing file. Only replaces the first occurrence of the search text."
+        return (
+            "Edit a file by finding and replacing text. "
+            "WHEN TO USE: To make surgical changes to existing files — add docstrings, fix bugs, "
+            "refactor code, change parameters, fix imports. Two modes: (1) search-and-replace with "
+            "search_text+replace_text for targeted edits, (2) full content replacement with 'content'. "
+            "WHEN NOT TO USE: For creating new files (use write_file), for rewriting entire existing "
+            "files where you want to replace most content (use write_file for clarity). "
+            "PARAMETERS: 'path' (required, absolute path), 'search_text' (optional, exact text to find), "
+            "'replace_text' (optional, text to replace with), 'content' (optional, full new file content). "
+            "EXAMPLE: {\"path\": \"/home/user/project/train.py\", "
+            "\"search_text\": \"learning_rate = 0.01\", "
+            "\"replace_text\": \"learning_rate = 0.001\"} "
+            "COMMON MISTAKES: search_text not matching whitespace exactly (indentation matters); "
+            "using 'old_value' or 'new_value' as parameter names instead of the correct "
+            "'search_text' and 'replace_text'; expecting it to replace ALL occurrences "
+            "(it only replaces the FIRST)."
+        )
 
     @property
     def parameters(self) -> dict:
@@ -53,20 +69,26 @@ class EditFileTool(BaseTool):
         2. full replacement: provide content (replaces entire file content)
         """
         try:
-            if not os.path.exists(path):
+            # Resolve relative paths against workdir
+            if not path.startswith('/') and hasattr(self, 'workdir') and self.workdir:
+                resolved_path = os.path.join(self.workdir, path)
+            else:
+                resolved_path = path
+
+            if not os.path.exists(resolved_path):
                 return ToolResult(
                     success=False,
                     output="",
-                    error=f"File not found: {path}",
+                    error=f"File not found: {resolved_path}",
                 )
 
             # Mode 2: full content replacement
             if content is not None and search_text is None:
-                with open(path, "w") as f:
+                with open(resolved_path, "w") as f:
                     f.write(content)
                 return ToolResult(
                     success=True,
-                    output=f"Successfully wrote new content to {path} ({len(content)} chars)",
+                    output=f"Successfully wrote new content to {resolved_path} ({len(content)} chars)",
                 )
 
             # Mode 1: search-and-replace
@@ -77,29 +99,29 @@ class EditFileTool(BaseTool):
                     error="edit_file requires either (search_text + replace_text) or content",
                 )
 
-            with open(path, "r") as f:
+            with open(resolved_path, "r") as f:
                 current = f.read()
 
             if search_text not in current:
                 return ToolResult(
                     success=False,
                     output="",
-                    error=f"Search text not found in {path}",
+                    error=f"Search text not found in {resolved_path}",
                 )
 
             new_content = current.replace(search_text, replace_text, 1)
-            with open(path, "w") as f:
+            with open(resolved_path, "w") as f:
                 f.write(new_content)
 
             return ToolResult(
                 success=True,
-                output=f"Successfully edited {path}",
+                output=f"Successfully edited {resolved_path}",
             )
         except PermissionError:
             return ToolResult(
                 success=False,
                 output="",
-                error=f"Permission denied editing: {path}",
+                error=f"Permission denied editing: {resolved_path}",
             )
         except Exception as e:
             return ToolResult(

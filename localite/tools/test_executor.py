@@ -16,7 +16,18 @@ class TestExecutorTool(BaseTool):
     def description(self) -> str:
         return (
             "Auto-detect and run tests. Supports pytest, unittest, and cargo-test. "
-            "Returns pass/fail counts and test output."
+            "Returns pass/fail counts and test output. "
+            "WHEN TO USE: After making code changes to verify nothing is broken; before submitting "
+            "code changes to ensure existing tests pass; to reproduce test failures. "
+            "WHEN NOT TO USE: For running arbitrary shell commands (use run_shell), "
+            "for compiling/building projects (use run_shell with make or cargo build). "
+            "PARAMETERS: 'path' (optional, directory or test file), 'framework' (optional, "
+            "force specific framework: 'pytest', 'unittest', 'cargo-test'), "
+            "'timeout' (optional, int seconds, default 120). "
+            "EXAMPLE: {\"path\": \"/home/user/project/tests\", \"timeout\": 60} "
+            "COMMON MISTAKES: Not setting a long enough timeout for large test suites; "
+            "expecting test output in a specific format (it varies by framework); "
+            "calling test_executor before running ANY verification (use on changed files first)."
         )
 
     @property
