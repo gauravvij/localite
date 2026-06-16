@@ -1,110 +1,91 @@
-# Switch to Gemma 4 E4B + Close 5 MVP Gaps
+# SWE-bench Harness: Stages 0–5 — GPU Endpoint Routing + Guidance Fixes + v6/v7 Rerun
 
 ## Goal
-Switch the localite coding agent from LFM2.5-8B-A1B to Gemma 4 E4B (objectively better across 4/6 degradation dimensions), and close the 5 critical gaps that block real coding evaluation: format monitor, standing instructions injection, profile-driven config, context refresh repair, and plan anchoring.
+Wire up the Qwen GPU endpoint with automatic Ollama fallback (Stage 0), fix the guidance injection bugs that prevent the model from ever calling edit_file (Stages 1–2), add token-aware context trimming and system-prompt trimming (Stages 3–4), then rerun v6 and v7 SWE-bench Lite on the Qwen3.5-4B GPU endpoint and report improvements (Stage 5).
 
 ## Research Summary
-- **E4B vs LFM2.5 comparison**: E4B dominates on Tool Call Drift (1.00 vs 0.26 avg), Instruction Adherence Decay (30-turn horizon vs 10), Persona Consistency (perfect vs perfect). LFM2.5 only wins on Memory Retrieval (8 turns vs 5). Recency bias is universal. Full data at `/home/azureuser/local_llm_eval/results/multi_model_comparison_report.md`.
-- **E4B output format**: No `<thinking>/<response>` XML tags. Clean natural text. No thinking tags detected. `has_thinking_tags=false`.
-- **E4B tool call format**: Scores 1.00 ± 0.00 at all depths through 20 turns — natively produces valid JSON tool calls. No format guard needed.
-- **E4B memory horizon**: Break point at 5 turns → `memory_horizon=5`.
-- **E4B IAD horizon**: Break point at 30 turns → `iad_horizon=30`.
-- **E4B available in Ollama**: `ollama list` confirms `gemma4:e4b` present, 9.6 GB, Q4_K_M quantization. Works on CPU.
-- **Hardware**: 8-core CPU, 62.8 GB RAM, no GPU. E4B runs fine (4B dense params, ~10-15s/turn on CPU).
-- **Current profiles**: Only `lfm25.toml` exists at `profiles/lfm25.toml`.
+- New Qwen GPU endpoint confirmed live: `https://specifies-format-herald-successfully.trycloudflare.com/v1`
+- Model ID confirmed: `Qwen/Qwen3.5-4B`, max_model_len=16384, served via vLLM
+- Profile already updated by user: `profiles/qwen35_4b_gpu.toml` has the new base_url
+- Root cause of 0/5 resolve rate identified from v6/v7 logs:
+  1. Guidance heuristic extracts `task_complete` (our own tool name) as a "task identifier" → ctags resolves it to a test file → model is told to read irrelevant test files 6+ times
+  2. Same wrong guidance injected repeatedly (no dedup), eating the model's ~5-turn competent window
+  3. No forced-edit trigger: model explores indefinitely, never calls edit_file/write_file
+  4. V7 HTTP 400s: char-based trimmer pops from index 1 (may remove system prompt or task), not tool outputs first
+- `swe_runner.py` lines 624–644: provider-based client selection (openai_compatible → AsyncOpenAIClient, else → AsyncOllamaClient)
+- `agent_loop.py` lines 638–913: progressive guidance injection after every list_files call
+- `agent_loop.py` lines 478–490: char-based context trimmer (pops context[1] blindly)
+- `agent_loop.py` lines 630–640: stall path — no-tool-call just increments stall_count, no re-prompt
 
 ## Approach
-Seven subtasks, ordered by dependency:
-
-1. Create E4B profile TOML with correct degradation parameters
-2. Wire ModelProfile into AgentLoop — load at init, drive all thresholds from profile
-3. Add standing instructions injection into `_build_context()` (every turn, counters recency bias)
-4. Build Format Monitor — inspect tool call outputs, track drift, trigger early refresh
-5. Repair context refresh — re-inject standing instructions, session facts, active plan, last tool results
-6. Add plan anchoring — store plan text when Plan phase completes, inject during Execute/Verify
-7. Update main.py `--profile` default to "gemma4_e4b", update `--help` text
-8. Run full test suite + real-model E2E to verify no regressions
+Staged surgical edits to `agent_loop.py` and `swe_runner.py`, verified with a 1-instance smoke run between Stage 2 and Stage 3, then full v6+v7 reruns.
 
 ## Subtasks
-1. Create `/home/azureuser/local_llm_eval/profiles/gemma4_e4b.toml` with:
-   - name=`gemma4:e4b`, provider=ollama
-   - max_turns=5 (slightly above memory_horizon to let refresh catch it)
-   - memory_horizon=5 (from eval data: break point at 5 turns)
-   - format_guard=false (native 1.00 tool call score — no guard needed)
-   - recency_protection=true (still vulnerable to recency bias)
-   - has_thinking_tags=false (no XML tags in output)
-   - iad_horizon=30 (break point at 30 turns)
-   - base_url=localhost:11434, timeout=30
-   (verify: `python3 -c "from localite.config import ConfigLoader; p=ConfigLoader().load_profile('gemma4_e4b'); print(p)"`)
 
-2. Update `AgentLoop.__init__` to accept `model_profile: ModelProfile` parameter. Use it to set:
-   - `TurnCounter(hard_limit=profile.max_turns)`
-   - `self.format_guard = profile.format_guard`
-   - `self.memory_horizon = profile.memory_horizon`
-   - `self.recency_protection = profile.recency_protection`
-   - Pass `has_thinking_tags` to `AsyncOllamaClient` already handled via `_strip_thinking`
-   (verify: unit test creating AgentLoop with profile, check turn_counter.hard_limit matches profile)
+### Stage 0 — GPU endpoint routing + health-check fallback
+1. Add `LOCALITE_BASE_URL` env-var override in `swe_runner.py` `create_swe_agent()`: if set, override `profile.base_url` before client construction. Log which URL is used.
+2. Add a synchronous health-check helper `_check_endpoint_health(base_url, model_name, timeout=10)` in `swe_runner.py` that hits `{base_url}/models` and returns True/False.
+3. In `create_swe_agent()`, after resolving `base_url`: call health-check; if it fails and provider is `openai_compatible`, log a warning and fall back to the Ollama localhost profile (`http://localhost:11434`) with the same model name. Log the fallback decision clearly.
+4. Verify: run `python -c "from swe_runner import _check_endpoint_health; print(_check_endpoint_health('https://specifies-format-herald-successfully.trycloudflare.com/v1', 'Qwen/Qwen3.5-4B'))"` — should print True.
 
-3. Modify `_build_context()` to inject standing instructions as a user message block after the system prompt. This counters recency bias by re-instating core rules every turn:
-   ```python
-   if self.recency_protection:
-       messages.append({"role": "user", "content": f"[STANDING INSTRUCTIONS]\n{self.standing_instructions.get_text()}"})
-   ```
-   (verify: E2E test — check context construction includes standing instructions in returned messages)
+### Stage 1 — Fix guidance injection (highest leverage)
+5. In `agent_loop.py`, define a module-level `HARNESS_TOOL_NAMES` frozenset containing all tool names the harness itself uses: `{'task_complete', 'read_file', 'edit_file', 'list_files', 'grep_search', 'write_file', 'run_shell', 'test_executor', 'bash', 'python'}` plus common harness path tokens: `{'swe_bench', 'repos', 'workdir', 'localite', 'agent_loop'}`.
+6. In the ctags identifier extractor (around line 776–792), add a filter: after extracting identifiers, remove any token that is in `HARNESS_TOOL_NAMES` (case-insensitive). Also add a confidence gate: if ctags resolves an identifier ONLY to files under `test/` or `tests/` directories (not any `src/` file), suppress that guidance (set `ctags_guidance = None`).
+7. Add a `_guidance_seen: set[str]` instance variable (init in `__init__`) and a `_guidance_count: int = 0` counter. Before injecting any guidance message, check: if the message is already in `_guidance_seen` OR `_guidance_count >= 2`, skip injection entirely. Otherwise add to `_guidance_seen`, increment counter, and inject.
+8. Verify: grep the agent log for a 1-instance run — confirm zero occurrences of `task_complete` or `swe_bench` in `[GUIDANCE]` lines, and no repeated guidance strings.
 
-4. Create `localite/context/format_monitor.py` with:
-   - `FormatMonitor` class — tracks tool call format quality over recent turns
-   - `record_tool_call(tool_call: dict, response_text: str)`: parses output, scores JSON adherence (0.0-1.0)
-   - `should_refresh() -> bool`: returns True if running average dips below threshold (0.3)
-   - `reset()`: clear tracking window
-   - Wire into `_check_degradation()` — if `self.format_guard` is True, check format monitor before turn limit
-   (verify: unit test — feed bad JSON outputs, confirm should_refresh returns True)
+### Stage 2 — Forced-edit trigger + message-mode re-prompt
+9. Add instance variable `_edit_calls: int = 0` in `__init__`. In the tool-call handler, after a successful `edit_file` or `write_file` call, increment `_edit_calls`.
+10. In the no-tool-call (stall) path (around line 632): instead of just incrementing `stall_count`, check if `self.current_phase == Phase.EXECUTE` — if so, inject a sharp re-prompt as a user message: `"[REQUIRED] You are in EXECUTE phase. You MUST call a tool now — either edit_file or write_file to make the code change, or task_complete if done. Do NOT send a message. Call a tool."` Do this on the FIRST stall in EXECUTE; on the second stall, increment stall_count as before.
+11. Add a forced-edit trigger: after every tool call in EXECUTE phase, if `_edit_calls == 0` AND `turn_counter.count >= 8` AND the model has called `read_file` or `grep_search` at least 3 times (track with `_investigate_calls: int`), inject a user message: `"[REQUIRED] You have explored enough. Now call edit_file or write_file to apply your fix. Do not explore further."` — inject this at most once (guard with `_forced_edit_injected: bool`).
+12. Verify: in a 1-instance smoke run log, confirm at least one `[REQUIRED]` line appears and that `edit_file` or `write_file` is called at least once per instance where a file was identified.
 
-5. Repair `_refresh_context()` so it re-injects:
-   - Standing instructions block (as in subtask 3)
-   - Session facts block (current objective + last tool used + last result)
-   - Active plan summary (if one exists from subtask 6)
-   - Last tool result as a tool-role message
-   - Keep last N conversation turns (N from profile memory_horizon, not hardcoded 4)
-   (verify: unit test on AgentLoop — call refresh, inspect conversation_history for all expected blocks)
+### Smoke run (between Stage 2 and Stage 3)
+13. Run 1 instance of v6 on the Qwen GPU endpoint: `python swe_runner.py --profile qwen35_4b_gpu --instances 1 --benchmark v6`. Grep the log for `[GUIDANCE]`, `[REQUIRED]`, `edit_file`, `write_file`. Confirm: guidance count ≤ 2, no harness-tool guidance, at least one `[REQUIRED]` or `edit_file` call. Log to `results/smoke_test_stage2.log`.
 
-6. Modify `_execute_phase()` to detect when Phase switches to PLAN, capture plan text from model output, store as `self.active_plan`. Modify `_build_context()` to inject as:
-   ```python
-   if self.active_plan:
-       messages.append({"role": "user", "content": f"[ACTIVE PLAN]\n{self.active_plan}"})
-   ```
-   Clear plan when phase moves past EXECUTE or refresh triggers.
-   (verify: unit test — set phase to PLAN, capture plan, confirm it appears in subsequent context)
+### Stage 3 — Token-aware context trimming (kills v7 HTTP 400s)
+14. Replace the blind `context.pop(1)` trimmer in `agent_loop.py` (lines ~487–490) with a smarter eviction strategy: keep indices 0 (system prompt) and 1 (standing instructions if present) pinned; evict from the OLDEST tool-result messages first (role == "tool"), then oldest assistant messages, never touching the first 2 messages or the last 2 messages (most recent exchange). Cap single tool output at 8000 chars (down from 32000) when context is already near budget.
+15. Also add a per-read_file output cap: if a `read_file` tool result exceeds 6000 chars, truncate it and append `\n[File truncated — use grep_search to find specific sections]`.
+16. Verify: rerun the 3 v7 instances that 400'd (sqlfluff-core-2419, sqlfluff-core-1733, sqlfluff-core-1763) — zero HTTP 400 errors in log.
 
-7. Update `main.py`:
-   - Change `default="lfm25"` to `default="gemma4_e4b"` in `--profile` argument
-   - Update help text and welcome message to reflect E4B primary
-   (verify: `python3 localite/main.py --help` shows E4B as default)
+### Stage 4 — Trim system prompt
+17. In `agent_loop.py`, audit `SYSTEM_PROMPT` and `OUTPUT_FORMAT_STANDARD`: collapse redundant anti-pattern lists (lines like "NEVER do X" repeated 3+ times), merge the 5-phase description into a 2-state summary (INVESTIGATE → EDIT), keep tool descriptions and one format example. Target: reduce system prompt from ~150 lines to ~80 lines. Preserve all tool descriptions and the output format block exactly.
+18. Verify: `len(system_prompt)` logged at start of run is meaningfully smaller (target < 3000 chars vs current); 1-instance behavior unchanged or better.
 
-8. Run full test suite + real-model E2E:
-   - All unit tests pass (24 passed previously)
-   - Real-model E2E with E4B (not LFM2.5) completes at least 2 turns
-   - No regressions from LFM2.5 baseline
-   (verify: `TEST_E2E=1 python3 -m pytest tests/test_agent_loop.py -v --tb=short` — all green)
+### Stage 5 — Full v6 + v7 rerun on Qwen GPU + reports
+19. Run full v6 evaluation: `python swe_runner.py --profile qwen35_4b_gpu --benchmark v6`. Capture to `results/v6_gpu_eval.log`.
+20. Run full v7 evaluation: `python swe_runner.py --profile qwen35_4b_gpu --benchmark v7`. Capture to `results/v7_gpu_eval.log`.
+21. Write three reports:
+    - `results/swe_bench/v6_qwen35_gpu_summary.md` — v6 results post-fix
+    - `results/swe_bench/v7_qwen35_gpu_summary.md` — v7 results post-fix
+    - `results/swe_bench/v6_v7_comparison_report.md` — side-by-side: old (CPU, pre-fix) vs new (GPU, post-fix): resolve rate, guidance injection count, edit_file call count, HTTP 400 count, wall time
+22. Each report must include: resolve rate, per-instance table (instance ID, status, edit_file called Y/N, guidance count, HTTP 400 Y/N), key observations, recommendations.
 
 ## Deliverables
-| File Path | Description |
-|-----------|-------------|
-| `/home/azureuser/local_llm_eval/profiles/gemma4_e4b.toml` | E4B model profile from degradation data |
-| `/home/azureuser/local_llm_eval/localite/loop/agent_loop.py` | Updated with profile, standing instructions, plan anchoring, format monitor wiring |
-| `/home/azureuser/local_llm_eval/localite/context/format_monitor.py` | New format monitor module |
-| `/home/azureuser/local_llm_eval/localite/main.py` | Updated default profile to gemma4_e4b |
+| File | Description |
+|------|-------------|
+| `/home/azureuser/local_llm_eval/swe_runner.py` | Health-check helper + env-var override + Ollama fallback |
+| `/home/azureuser/local_llm_eval/localite/loop/agent_loop.py` | Guidance filter/dedup, forced-edit trigger, EXECUTE re-prompt, smarter context trimmer, trimmed system prompt |
+| `/home/azureuser/local_llm_eval/results/smoke_test_stage2.log` | 1-instance smoke run log |
+| `/home/azureuser/local_llm_eval/results/v6_gpu_eval.log` | Full v6 run log |
+| `/home/azureuser/local_llm_eval/results/v7_gpu_eval.log` | Full v7 run log |
+| `/home/azureuser/local_llm_eval/results/swe_bench/v6_qwen35_gpu_summary.md` | v6 post-fix summary |
+| `/home/azureuser/local_llm_eval/results/swe_bench/v7_qwen35_gpu_summary.md` | v7 post-fix summary |
+| `/home/azureuser/local_llm_eval/results/swe_bench/v6_v7_comparison_report.md` | Before/after comparison |
 
 ## Evaluation Criteria
-- All 24 existing tests pass (no regressions)
-- Real-model E2E with E4B completes successfully (≥2 turns with tool calls)
-- `_build_context()` returns messages including standing instructions (proven via test assertion)
-- `_refresh_context()` re-injects standing instructions + session facts (proven via test assertion)
-- Format monitor detects bad JSON format and triggers refresh (proven via unit test)
-- Profile drives turn counter hard_limit (not hardcoded)
+- Stage 0: `_check_endpoint_health(...)` returns True for the GPU endpoint; fallback logs correctly when endpoint is down
+- Stage 1: Zero `task_complete`/`swe_bench` in `[GUIDANCE]` lines; no repeated guidance string; guidance count ≤ 2 per instance
+- Stage 2: At least one `[REQUIRED]` or `edit_file`/`write_file` call per instance in EXECUTE phase
+- Stage 3: Zero HTTP 400 errors in v7 rerun
+- Stage 4: System prompt char count reduced meaningfully
+- Stage 5: Reports exist, are non-empty, resolve rate reported (any improvement over 0/5 is a win; primary goal is edit_file being called)
 
 ## Notes
-- E4B does NOT have thinking tags. `has_thinking_tags=false` means strip_thinking is a no-op.
-- E4B scores 1.00 on tool call format at ALL depths — format_guard=false is correct for this model.
-- Memory retrieval break point at 5 turns drives memory_horizon=5. Refresh should trigger before this point.
-- Recency bias is universal (all models score 0.0 at depth 1) — standing instructions re-injection every turn is the primary countermeasure.
+- GPU endpoint: `https://specifies-format-herald-successfully.trycloudflare.com/v1`, model `Qwen/Qwen3.5-4B`, max_model_len=16384
+- Profile: `profiles/qwen35_4b_gpu.toml` (already updated by user with new base_url)
+- Ollama fallback: `http://localhost:11434`
+- Prior run results for comparison: v6 CPU pre-fix: 0/5 resolved, 0 agent_errors, 155 turns, 396s; v7 CPU pre-fix: 0/5 resolved, 3 agent_errors (HTTP 400), 117 turns, 380s
+- The `_guidance_seen` set and `_guidance_count` must be reset per-instance (they live on the AgentLoop instance which is recreated per instance in swe_runner.py — so this is automatic)
+- Do NOT change the tool descriptions or output format block in SYSTEM_PROMPT — only trim redundant prose
+- After editing agent_loop.py, always run `python -m py_compile localite/loop/agent_loop.py` to verify syntax

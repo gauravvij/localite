@@ -21,6 +21,8 @@ import subprocess
 import sys
 import time
 import traceback
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 # Ensure project root is on path
@@ -543,21 +545,41 @@ def evaluate_instance(instance: dict, workdir: str, timeout: int = 120) -> dict:
         }
 
 
+
+def _check_endpoint_health(base_url: str, model_name: str = "", timeout: int = 10) -> bool:
+    """Check if an OpenAI-compatible endpoint is reachable.
+
+    Hits {base_url}/models and returns True if HTTP 200 is received.
+    Returns False on any connection error, timeout, or non-200 status.
+    """
+    url = base_url.rstrip("/") + "/models"
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            ok = resp.status == 200
+            logger.info(f"Endpoint health check {url}: HTTP {resp.status} -> {'OK' if ok else 'FAIL'}")
+            return ok
+    except Exception as e:
+        logger.warning(f"Endpoint health check {url} failed: {e}")
+        return False
+
+
 # ============================================================
 # Agent creation
 # ============================================================
 
-def create_swe_agent(workdir: str) -> AgentLoop:
+def create_swe_agent(workdir: str, profile_name: str = "gemma4_e4b") -> "AgentLoop":
     """Create a localite AgentLoop configured for SWE-bench.
 
     Follows the test_e2e_realtime.py pattern:
     - Create tools with workdir set to the repo
     - PermissionGate with auto_approve=True
-    - AsyncOllamaClient for gemma4:e4b
-    - AgentLoop with max 20 turns
+    - Model client from profile
+    - AgentLoop with max turns from profile
 
     Args:
         workdir: Repo workdir path to set as agent's working directory.
+        profile_name: Profile name to load (e.g. "gemma4_e4b", "gemma4_needle").
 
     Returns:
         Configured AgentLoop instance.
@@ -616,17 +638,53 @@ def create_swe_agent(workdir: str) -> AgentLoop:
     # 3. Episode store
     store = EpisodeStore()
 
-    # 4. Load profile for gemma4_e4b
+    # 4. Load the requested profile
     config_loader = ConfigLoader()
-    profile = config_loader.load_profile("gemma4_e4b")
+    profile = config_loader.load_profile(profile_name)
 
-    # 5. Model client
-    model = AsyncOllamaClient(
-        model_name="gemma4:e4b",
-        base_url=profile.base_url,
-        timeout=profile.timeout,
-        has_thinking_tags=profile.has_thinking_tags,
-    )
+    # 4b. LOCALITE_BASE_URL env-var override — allows tunnel rotation without editing TOML
+    env_base_url = os.environ.get("LOCALITE_BASE_URL", "").strip()
+    if env_base_url:
+        logger.info(f"LOCALITE_BASE_URL override: {profile.base_url!r} -> {env_base_url!r}")
+        profile.base_url = env_base_url
+
+    # 5. Model client from profile (provider-based selection)
+    if profile.provider == "openai_compatible":
+        from localite.model.openai_client import AsyncOpenAIClient
+        # Health-check the endpoint; fall back to Ollama localhost if unreachable
+        if not _check_endpoint_health(profile.base_url, profile.name):
+            logger.warning(
+                f"GPU endpoint {profile.base_url!r} unreachable — "
+                f"falling back to Ollama at http://localhost:11434"
+            )
+            profile.base_url = "http://localhost:11434"
+            profile.provider = "ollama"
+            model = AsyncOllamaClient(
+                model_name=profile.name,
+                base_url=profile.base_url,
+                timeout=profile.timeout,
+                has_thinking_tags=profile.has_thinking_tags,
+            )
+            logger.info(f"Fallback: Using Ollama client for {profile.name} at {profile.base_url}")
+        else:
+            # Detect Qwen3 models and disable thinking (suppress CoT tokens)
+            disable_thinking = "qwen3" in profile.name.lower() or "qwen3.5" in profile.name.lower()
+            model = AsyncOpenAIClient(
+                model_name=profile.name,
+                base_url=profile.base_url,
+                timeout=profile.timeout,
+                has_thinking_tags=profile.has_thinking_tags,
+                disable_thinking=disable_thinking,
+            )
+            logger.info(f"Using OpenAI-compatible client for {profile.name} at {profile.base_url}")
+    else:
+        # Default: Ollama client (ollama provider or any other)
+        model = AsyncOllamaClient(
+            model_name=profile.name,
+            base_url=profile.base_url,
+            timeout=profile.timeout,
+            has_thinking_tags=profile.has_thinking_tags,
+        )
 
     # 6. Standing instructions
     standing_instructions = StandingInstructions()
@@ -641,8 +699,32 @@ def create_swe_agent(workdir: str) -> AgentLoop:
     if "memory_write" in tools:
         tools["memory_write"]._memory_store = memory_store
 
-    # 8. Build loop with profile max_turns
-    loop = AgentLoop(
+    # 8. NeedleClient integration (if enabled in profile)
+    needle_client = None
+    if profile.needle_enabled:
+        try:
+            from localite.model.needle_client import NeedleClient
+            needle_checkpoint = os.path.join(
+                PROJECT_ROOT, "needle", "checkpoints", "needle.pkl"
+            )
+            if os.path.exists(needle_checkpoint):
+                needle_client = NeedleClient(checkpoint_path=needle_checkpoint)
+                logger.info(
+                    "NeedleClient initialized (disabled=%s) from %s",
+                    needle_client.disabled, needle_checkpoint,
+                )
+            else:
+                logger.warning("Needle checkpoint not found at %s", needle_checkpoint)
+        except Exception as e:
+            logger.warning("NeedleClient init failed: %s", e)
+
+    # 9. Dynamically import the AgentLoop class (supports needle variant)
+    import importlib
+    loop_module = importlib.import_module(profile.agent_loop_module)
+    AgentLoopClass = getattr(loop_module, profile.agent_loop_class)
+
+    # 10. Build loop with profile max_turns
+    loop = AgentLoopClass(
         model_client=model,
         tools=tools,
         permission_gate=gate,
@@ -652,9 +734,13 @@ def create_swe_agent(workdir: str) -> AgentLoop:
         max_iterations=profile.max_turns,
         memory_store=memory_store,
         code_index=code_index,
+        needle_client=needle_client,
     )
 
-    logger.info(f"AgentLoop created for workdir={workdir}")
+    logger.info(
+        "AgentLoop (%s.%s) created for workdir=%s",
+        profile.agent_loop_module, profile.agent_loop_class, workdir,
+    )
     return loop
 
 
@@ -662,7 +748,7 @@ def create_swe_agent(workdir: str) -> AgentLoop:
 # Instance execution
 # ============================================================
 
-async def run_instance(instance: dict, agent_timeout: int = 900) -> dict:
+async def run_instance(instance: dict, agent_timeout: int = 900, profile_name: str = "gemma4_e4b") -> dict:
     """Run a single SWE-bench instance.
 
     Args:
@@ -736,7 +822,7 @@ async def run_instance(instance: dict, agent_timeout: int = 900) -> dict:
         result["tests_before"] = tests_before
 
         # Step 3: Create and run the agent
-        loop = create_swe_agent(workdir)
+        loop = create_swe_agent(workdir, profile_name=profile_name)
 
         # Prepare issue text for the agent
         agent_task = f"""You are working in the repository at {workdir}.
@@ -918,6 +1004,10 @@ def main():
         "--agent-timeout", type=int, default=900,
         help="Timeout per instance in seconds (default: 900)"
     )
+    parser.add_argument(
+        "--profile", type=str, default="gemma4_e4b",
+        help="Profile name to load (e.g. gemma4_e4b, gemma4_needle)"
+    )
     args = parser.parse_args()
 
     # Add file handler for debug log capture
@@ -956,7 +1046,7 @@ def main():
         logger.info(f"Instance {i+1}/{len(instances)}: {instance['instance_id']}")
         logger.info(f"{'#'*60}")
 
-        result = asyncio.run(run_instance(instance, agent_timeout=args.agent_timeout))
+        result = asyncio.run(run_instance(instance, agent_timeout=args.agent_timeout, profile_name=args.profile))
         save_result(result)
         all_results.append(result)
 

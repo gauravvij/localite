@@ -36,6 +36,11 @@ class ModelProfile:
     timeout: int = 30
     num_predict: Optional[int] = None
     tool_call_format: str = "standard"
+    max_context_chars: Optional[int] = None  # Maximum chars before context trimming. None = no limit.
+    # Agent loop configuration (needle integration)
+    agent_loop_module: str = "localite.loop.agent_loop"
+    agent_loop_class: str = "AgentLoop"
+    needle_enabled: bool = False
 
 
 class ConfigLoader:
@@ -69,7 +74,13 @@ class ConfigLoader:
             raise FileNotFoundError(f"Profile not found: {path}")
         with open(path, "rb") as f:
             data = tomli.load(f)
-        return ModelProfile(**data["model"])
+        model_kwargs = dict(data["model"])
+        # Merge [agent] section fields into ModelProfile if present
+        if "agent" in data:
+            for k, v in data["agent"].items():
+                if k in ModelProfile.__dataclass_fields__:
+                    model_kwargs[k] = v
+        return ModelProfile(**model_kwargs)
 
     def list_profiles(self) -> list[str]:
         """List available profile names."""

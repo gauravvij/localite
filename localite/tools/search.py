@@ -62,13 +62,25 @@ class GrepSearchTool(BaseTool):
     @measure_duration
     async def execute(
         self,
-        pattern: str,
-        path: str,
+        pattern: str = "",
+        path: str = "",
         glob_pattern: str | None = None,
         max_results: int = 50,
     ) -> ToolResult:
         """Search for pattern in files under the given path."""
         try:
+            if not pattern:
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error="Missing required argument: 'pattern'. Usage: {\"pattern\": \"<regex>\", \"path\": \"<dir_or_file>\"}",
+                )
+            if not path:
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error="Missing required argument: 'path'. Usage: {\"pattern\": \"<regex>\", \"path\": \"<dir_or_file>\"}",
+                )
             if not os.path.exists(path):
                 return ToolResult(
                     success=False,

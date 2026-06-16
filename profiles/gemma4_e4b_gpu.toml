@@ -1,0 +1,14 @@
+[model]
+name = "google/gemma-4-E4B-it"
+provider = "openai_compatible"
+max_turns = 35
+memory_horizon = 5
+format_guard = false
+recency_protection = true
+has_thinking_tags = false
+stall_threshold = 5
+base_url = "https://ethernet-mechanical-morrison-dave.trycloudflare.com/v1"
+timeout = 360
+num_predict = 4096
+tool_call_format = "gemma_native"
+max_context_chars = 56000

@@ -1,0 +1,14 @@
+[model]
+name = "Qwen/Qwen3.5-4B"
+provider = "openai_compatible"
+max_turns = 35
+memory_horizon = 5
+format_guard = false
+recency_protection = true
+has_thinking_tags = false
+stall_threshold = 2
+base_url = "https://specifies-format-herald-successfully.trycloudflare.com/v1"
+timeout = 360
+num_predict = 4096
+tool_call_format = "standard"
+max_context_chars = 32000

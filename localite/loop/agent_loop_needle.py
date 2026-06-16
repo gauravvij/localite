@@ -17,25 +17,13 @@ from localite.model.client import AsyncOllamaClient
 from localite.permissions.gate import PermissionGate, PermissionResult
 from localite.episodes.model import Episode, Turn
 from localite.episodes.store import EpisodeStore
+from localite.model.needle_client import NeedleClient
 
 logger = logging.getLogger(__name__)
 
 # Maximum characters for tool output in conversation history
 # Prevents context flooding from large tool results (e.g. ls -R of venv)
 MAX_TOOL_OUTPUT_CHARS = 32000
-
-# Harness tool names and path tokens — never use these as ctags identifiers
-# (they are our own tool names, not symbols from the task's codebase)
-HARNESS_TOOL_NAMES = frozenset({
-    'task_complete', 'read_file', 'edit_file', 'list_files', 'grep_search',
-    'write_file', 'run_shell', 'test_executor', 'bash', '/usr/bin/python3',
-    'memory_read', 'memory_write', 'diff_view',
-    # harness path tokens
-    'swe_bench', 'repos', 'workdir', 'localite', 'agent_loop',
-    # common Python builtins that appear in objectives
-    'str', 'int', 'float', 'bool', 'list', 'dict', 'set', 'tuple',
-    'none', 'true', 'false',
-})
 
 # Output format templates — profile-driven selection
 # NOTE: The {{ }} are Jinja2-style escaping for .format() — they produce literal { } in the final output.
@@ -61,7 +49,9 @@ OUTPUT_FORMAT_GEMMA_NATIVE = """  - read_file: {{"tool_name": "read_file", "para
 # NOTE: The {{ }} are Jinja2-style escaping for .format() — they produce literal { } in the final output.
 # The {tool_descriptions} placeholder is replaced at runtime with tool descriptions.
 # The {output_format} placeholder is replaced with the profile-appropriate format template.
-SYSTEM_PROMPT = """You are localite, a local AI coding agent. Fix bugs and implement changes using the tools below.
+SYSTEM_PROMPT = """You are localite, a fully local AI coding agent. You help users with codebase
+understanding, modification, testing, and debugging. You operate through a set of tools that
+interact with the filesystem, shell, and test infrastructure.
 
 ## Available Tools
 
@@ -69,36 +59,83 @@ SYSTEM_PROMPT = """You are localite, a local AI coding agent. Fix bugs and imple
 
 ## Output Format
 
-CRITICAL: Respond with valid JSON tool calls for actions. Parameter names must match EXACTLY.
+CRITICAL: You MUST respond with valid JSON tool calls when you want to perform an action.
+Parameter names must match EXACTLY — do NOT invent or substitute parameter names.
 
-### Tool call examples:
+### Action (tool call) — real examples with correct parameter names:
 {output_format}
 
-### Message only (no tool call):
-{{"thought": "reasoning", "message": "message to user"}}
+### Communication with user (no tool call needed):
+{{"thought": "Your reasoning", "message": "Your message to the user"}}
 
-## Workflow: 2 States
+DO NOT send a "message" when you are supposed to be making tool calls in the EXECUTE phase.
+DO NOT invent parameter names — always check the tool description for correct names.
 
-**INVESTIGATE** (EXPLORE/PLAN phases): Understand the codebase first.
-- list_files → read_file → grep_search to locate the relevant code.
-- Max 6 investigate turns, then MUST transition to EXECUTE.
+## Phase Protocol
 
-**EXECUTE** (EXECUTE/VERIFY phases): Make the change, then verify.
-- Call edit_file or write_file to apply the fix.
-- Call test_executor to verify. Call task_complete when done.
-- DO NOT send message responses in EXECUTE — only tool calls.
+You operate in a 5-phase loop. Each phase has a specific purpose:
 
-## Rules (all mandatory)
+1. **EXPLORE** — Read files, search for patterns, understand the codebase before making changes.
+   Always start here: list_files → read_file → grep_search to understand structure.
 
-- Use exact parameter names from tool descriptions. list_files uses "path" not "directory"; edit_file uses "search_text"/"replace_text" not "old_value"/"new_value".
-- Read a file before editing it (unless you already have its content).
-- After identifying the file and bug: STOP exploring, START editing immediately.
-- Do NOT re-read files already read. Do NOT list the same directory twice.
-- edit_file / write_file are the ONLY actions that make progress. Messages do not.
-- Run test_executor after every change. Call task_complete when tests pass.
-- Do NOT run destructive shell commands (rm -rf, kill, docker stop).
+2. **PLAN** — Formulate a plan based on your exploration. State which files need changes and what
+   specific modifications are needed.
 
-When all changes are made and tests pass, call **task_complete**.
+3. **EXECUTE** — Use tools to make changes. This is the ONLY phase where you make file modifications.
+   DO NOT send "message" responses in EXECUTE — only make tool calls.
+   If you don't know which file to read, use grep_search for identifiers from the task.
+
+4. **VERIFY** — Run tests to confirm changes work. Use test_executor after every change.
+
+5. **ITERATE** — If tests fail, diagnose and fix. If tests pass, proceed to COMPLETE.
+   After COMPLETE, call task_complete — this is your FINAL action.
+
+Transitions: EXPLORE → PLAN → EXECUTE → VERIFY → ITERATE → (back to EXECUTE or COMPLETE)
+
+## Anti-Pattern Rules — NEVER do these
+
+1. NEVER invent parameter names. Every tool has exact parameter names documented in its
+   description. Use them as-is. For example, list_files uses "path" NOT "directory";
+   edit_file uses "search_text"/"replace_text" NOT "old_value"/"new_value".
+
+2. NEVER use or guess a parameter because the description says "key": "value". There is no
+   "key" parameter in any tool — every tool has specific named parameters (path, content,
+   command, pattern, etc.).
+
+3. NEVER send a "message" response in the EXECUTE phase. In EXECUTE, you must call tools.
+   Save commentary for EXPLORE or PLAN phases.
+
+4. NEVER skip read_file before edit_file. Always read a file before modifying it, unless
+   you already have its content from a recent read.
+
+5. NEVER call task_complete before running tests. Always verify with test_executor first.
+
+6. NEVER hallucinate file paths or code content. If unsure, use list_files or grep_search
+   to discover the actual project structure.
+
+7. NEVER run destructive shell commands (rm -rf, kill, Docker stop) without explicit
+   user confirmation.
+
+## Exploration Mandate
+
+Before modifying any files, you MUST:
+1. Use list_files to understand project structure
+2. Use read_file to read relevant source files
+3. Use grep_search to find identifiers, function definitions, or configuration values
+4. Only then use edit_file or write_file to make changes
+
+If you don't know which file to modify for a given task:
+  - Use grep_search for key terms from the task description
+  - Use list_files to explore directory structure
+  - Read config files and entry points to understand the codebase
+
+For worst-case scenarios (no clear file identified):
+  - Start with list_files at the project root with depth=2
+  - grep_search for identifiers mentioned in the task
+  - Read any README or documentation files first
+
+When you are done with ALL tasks (code changes made + tests passing),
+transition to COMPLETE and call **task_complete**.
 """
 
 
@@ -120,13 +157,14 @@ class AgentLoop:
         max_iterations: int = 3,
         memory_store: Optional['EpisodicMemoryStore'] = None,
         code_index: Optional['CodeIndex'] = None,
-        needle_client: Optional[Any] = None,
+        needle_client: Optional['NeedleClient'] = None,
     ):
         self.model = model_client
         self.tools = tools
         self.gate = permission_gate
         self.store = episode_store
         self.code_index = code_index
+        self.needle_client = needle_client
         self.standing_instructions = standing_instructions or StandingInstructions()
         self.max_iterations = max_iterations
 
@@ -147,15 +185,6 @@ class AgentLoop:
         self.stall_count = 0
         self.stall_threshold = getattr(model_profile, 'stall_threshold', 3)
         self.task_complete_called = False
-
-        # Guidance deduplication (Stage 1)
-        self._guidance_seen: set = set()
-        self._guidance_count: int = 0
-
-        # Edit/investigate tracking (Stage 2)
-        self._edit_calls: int = 0
-        self._investigate_calls: int = 0
-        self._forced_edit_injected: bool = False
 
         # Delegation telemetry
         self.tool_stats: dict[str, dict] = {}  # tool_name -> {calls, successes, failures, total_duration_ms, trust_score}
@@ -205,10 +234,7 @@ class AgentLoop:
 
         elif phase == Phase.PLAN:
             # Skip if user provided an explicit plan in their request
-            _obj = self.session_facts.current_objective
-            if isinstance(_obj, dict):
-                _obj = _obj.get("content", str(_obj))
-            request_lower = str(_obj).lower()
+            request_lower = self.session_facts.current_objective.lower()
             plan_keywords = ["plan:", "1.", "first", "step 1", "step1"]
             if any(kw in request_lower for kw in plan_keywords):
                 logger.info(f"Skipping PLAN phase — user provided explicit plan in request")
@@ -430,43 +456,6 @@ class AgentLoop:
                 options_payload,
             )
 
-            # Context window budget enforcement
-            # If profile has max_context_chars, trim older messages to stay within budget
-            if self.profile and self.profile.max_context_chars:
-                total_chars = sum(len(str(m.get("content", ""))) for m in context)
-                if total_chars > self.profile.max_context_chars:
-                    logger.warning(
-                        "Context exceeds budget (%d > %d chars), trimming older messages...",
-                        total_chars, self.profile.max_context_chars,
-                    )
-                    # Stage 3: smart eviction — pin indices 0-1, evict oldest tool msgs first
-                    # Pass 1: evict oldest tool-result messages (role == "tool")
-                    i = 2
-                    while total_chars > self.profile.max_context_chars and i < len(context) - 2:
-                        if context[i].get("role") == "tool":
-                            removed = context.pop(i)
-                            removed_chars = len(str(removed.get("content", "")))
-                            total_chars -= removed_chars
-                            logger.debug("Evicted tool msg at idx %d (%d chars, remaining: %d)", i, removed_chars, total_chars)
-                        else:
-                            i += 1
-                    # Pass 2: evict oldest assistant messages if still over budget
-                    i = 2
-                    while total_chars > self.profile.max_context_chars and i < len(context) - 2:
-                        if context[i].get("role") == "assistant":
-                            removed = context.pop(i)
-                            removed_chars = len(str(removed.get("content", "")))
-                            total_chars -= removed_chars
-                            logger.debug("Evicted assistant msg at idx %d (%d chars, remaining: %d)", i, removed_chars, total_chars)
-                        else:
-                            i += 1
-                    # Pass 3: fallback — evict any non-pinned message
-                    while total_chars > self.profile.max_context_chars and len(context) > 4:
-                        removed = context.pop(2)
-                        removed_chars = len(str(removed.get("content", "")))
-                        total_chars -= removed_chars
-                        logger.debug("Evicted fallback msg (%d chars, remaining: %d)", removed_chars, total_chars)
-
             response_text = await self.model.chat(context, stream=False, **options_payload)
 
             # DEBUG: log raw response after chat
@@ -516,6 +505,36 @@ class AgentLoop:
                 self.profile.stall_threshold if self.profile else 3,
             )
 
+        # === NEEDLE TOOL NAME VALIDATION ===
+        if tool_call and self.needle_client is not None and not self.needle_client.disabled:
+            proposed_name = tool_call.get("name", "")
+            proposed_args = tool_call.get("arguments", tool_call.get("args", {}))
+
+            # Get the objective from session_facts or conversation history
+            objective = getattr(self.session_facts, 'objective', '')
+            if not objective and self.conversation_history:
+                first_msg = self.conversation_history[0]
+                if isinstance(first_msg, dict):
+                    objective = first_msg.get('content', '')
+
+            # Validate with Needle (only for action/utility tools, not task_complete)
+            if proposed_name != "task_complete":
+                validated = self.needle_client.validate_tool_call(
+                    query=objective,
+                    tools_dict=self.tools,
+                    proposed_tool_name=proposed_name,
+                    proposed_args=proposed_args,
+                )
+                if validated["name"] != proposed_name:
+                    logger.info(
+                        "Needle corrected: %s -> %s",
+                        proposed_name,
+                        validated["name"],
+                    )
+                    tool_call["name"] = validated["name"]
+                    tool_call["arguments"] = validated["arguments"]
+        # === END NEEDLE VALIDATION ===
+
         if tool_call:
             turn.tool_call = tool_call
 
@@ -558,26 +577,13 @@ class AgentLoop:
                     "role": "assistant",
                     "content": response_text,
                 })
-                if not result.success:
-                    err_msg = result.error or result.output or "Unknown error"
-                    tool_content = f"ERROR: Tool call failed — {err_msg}\nYour action was NOT applied. You must retry with corrected parameters."
-                else:
-                    tool_content = result.output or ""
-                # Stage 3: cap read_file outputs at 6000 chars
-                tool_name_called = modified_call.get("name", "tool")
-                if tool_name_called == "read_file" and len(tool_content) > 6000:
-                    tool_content = tool_content[:6000] + "\n\n[File truncated — use grep_search to find specific sections]"
-                elif len(tool_content) > MAX_TOOL_OUTPUT_CHARS:
+                tool_content = result.output or result.error or ""
+                if len(tool_content) > MAX_TOOL_OUTPUT_CHARS:
                     tool_content = tool_content[:MAX_TOOL_OUTPUT_CHARS] + "\n\n[Output truncated at 32000 characters]"
-                # Stage 2: track edit/investigate calls
-                if tool_name_called in ("edit_file", "write_file") and result.success:
-                    self._edit_calls += 1
-                elif tool_name_called in ("read_file", "grep_search"):
-                    self._investigate_calls += 1
                 self.conversation_history.append({
                     "role": "tool",
                     "content": tool_content,
-                    "name": tool_name_called,
+                    "name": modified_call.get("name", "tool"),
                 })
             elif permission.decision == "skipped":
                 self.conversation_history.append({
@@ -601,11 +607,7 @@ class AgentLoop:
                     "role": "assistant",
                     "content": response_text,
                 })
-                if not result.success:
-                    err_msg = result.error or result.output or "Unknown error"
-                    tool_content = f"ERROR: Tool call failed — {err_msg}\nYour action was NOT applied. You must retry with corrected parameters."
-                else:
-                    tool_content = result.output or ""
+                tool_content = result.output or result.error or ""
                 if len(tool_content) > MAX_TOOL_OUTPUT_CHARS:
                     tool_content = tool_content[:MAX_TOOL_OUTPUT_CHARS] + "\n\n[Output truncated at 32000 characters]"
                 self.conversation_history.append({
@@ -620,17 +622,6 @@ class AgentLoop:
                 "role": "assistant",
                 "content": response_text,
             })
-            # Stage 2: inject [REQUIRED] re-prompt on first EXECUTE-phase stall
-            if (self.current_phase == Phase.EXECUTE
-                    and self.stall_count == 1
-                    and not self._forced_edit_injected):
-                reprompt = (
-                    "[REQUIRED] You are in EXECUTE phase. You MUST call a tool now — "
-                    "either edit_file or write_file to make the code change, or "
-                    "task_complete if done. Do NOT send a message. Call a tool."
-                )
-                self.conversation_history.append({"role": "user", "content": reprompt})
-                logger.info("[REQUIRED] EXECUTE-phase stall re-prompt injected")
 
         # Progressive guidance: after list_files returns directory structure, help the model navigate
         # Uses multi-strategy approach based on what the model is seeing:
@@ -788,9 +779,6 @@ class AgentLoop:
                                 for ident in sorted(identifiers, key=len, reverse=True):
                                     if ident.lower() in filtered_identifiers:
                                         continue
-                                    # Stage 1: skip harness tool names and path tokens
-                                    if ident.lower() in HARNESS_TOOL_NAMES:
-                                        continue
                                     matches = self.code_index.lookup(ident)
                                     if matches:
                                         # Pick first Python file from matches
@@ -801,14 +789,6 @@ class AgentLoop:
                                                 break
                                         if best_file is None:
                                             best_file = matches[0][0]
-                                        # Stage 1: confidence gate — skip if only test/ files
-                                        all_files = [fp for fp, _ln, _kind in matches if fp.endswith('.py')]
-                                        non_test = [fp for fp in all_files
-                                                    if '/test/' not in fp and '/tests/' not in fp
-                                                    and not fp.startswith('test/') and not fp.startswith('tests/')]
-                                        if all_files and not non_test:
-                                            # Only test files — suppress this guidance
-                                            continue
                                         ctags_guidance = (
                                             f"[GUIDANCE] '{ident}' is defined in {best_file}. "
                                             f"Read it with read_file."
@@ -914,31 +894,11 @@ class AgentLoop:
                             "or grep_search to find relevant code."
                         )
 
-                    # Stage 1: dedup + cap guidance injections
-                    if guidance_msg in self._guidance_seen or self._guidance_count >= 2:
-                        logger.debug(f"Guidance suppressed (seen={guidance_msg in self._guidance_seen}, count={self._guidance_count}): {guidance_msg[:80]}")
-                    else:
-                        self._guidance_seen.add(guidance_msg)
-                        self._guidance_count += 1
-                        self.conversation_history.append({
-                            "role": "user",
-                            "content": guidance_msg,
-                        })
-                        logger.debug(f"Progressive guidance injected ({self._guidance_count}/2): {guidance_msg[:120]}")
-
-        # Stage 2: forced-edit trigger — if explore-heavy with no edits, inject once
-        if (tool_call is not None
-                and self.current_phase == Phase.EXECUTE
-                and self._edit_calls == 0
-                and self._investigate_calls >= 3
-                and not self._forced_edit_injected):
-            forced_msg = (
-                "[REQUIRED] You have explored enough. Now call edit_file or write_file "
-                "to apply your fix. Do not explore further."
-            )
-            self.conversation_history.append({"role": "user", "content": forced_msg})
-            self._forced_edit_injected = True
-            logger.info(f"[REQUIRED] Forced-edit injected (investigate_calls={self._investigate_calls}, edit_calls={self._edit_calls})")
+                    self.conversation_history.append({
+                        "role": "user",
+                        "content": guidance_msg,
+                    })
+                    logger.debug(f"Progressive guidance injected: {guidance_msg[:120]}")
 
         # Record turn in episode and increment counter
         self.episode.turns.append(turn)
@@ -1135,10 +1095,13 @@ class AgentLoop:
                 "name": last_call,
             })
 
-        # Build: [extra_blocks..., conversation_turns]
-        # NOTE: Do NOT include system message here — _build_context() always prepends it.
-        # Including it here would create duplicate system messages causing HTTP 400.
-        combined = []
+        # Build: [system, user(standing+facts), extra_blocks..., conversation_turns]
+        # Start with the system prompt (update it with current tool descriptions)
+        combined = [
+            {"role": "system", "content": system_prompt},
+        ]
+        if len(refreshed) > 1:
+            combined.append(refreshed[1])  # user standing+fats
         combined.extend(extra_blocks)
         if trimmed_turns:
             combined.extend(trimmed_turns)
@@ -1289,11 +1252,8 @@ class AgentLoop:
         """Parse a tool call from model response text.
 
         Supports multiple formats:
-        1. JSON flat:         {"tool": "name", "arguments": {...}}
-        2. LFM2.5 native:    <|tool_call_start|>[tool_name(arg1='val1')]<|tool_call_end|>
-        3. Qwen tools[]:     {"tools": [{"list_files": {"path": "."}}]}
-        4. Qwen tool_calls[]:{"tool_calls": [{"grep_search": {"pattern": "x"}}]}
-        5. Qwen key-as-name: {"read_file": {"path": "/some/file.py"}}
+        1. JSON: {"tool": "name", "arguments": {...}}
+        2. LFM2.5 native: <|tool_call_start|>[tool_name(arg1='val1')]<|tool_call_end|>
 
         Returns:
             Dict with "name" and "args" if found, None otherwise.
@@ -1306,7 +1266,7 @@ class AgentLoop:
         if not text:
             return None
 
-        # --- Format 2: <|tool_call_start|>[tool_name(key='val')]<|tool_call_end|> ---
+        # --- Format 1: <|tool_call_start|>[tool_name(key='val')]<|tool_call_end|> ---
         import ast
         tool_call_match = re.search(
             r'<\|tool_call_start\|>\s*\[(\w+)\s*\(([^)]*)\)\]\s*<\|tool_call_end\|>',
@@ -1318,128 +1278,86 @@ class AgentLoop:
             args = {}
             if args_str.strip():
                 # Parse key=value, key='value', key="value" pairs
-                for pair in re.findall(r"(\w+)\s*=\s*(?:'([^']*)'|\"([^\"]*)\"| ([^,\s)]+))", args_str):
+                for pair in re.findall(r"(\w+)\s*=\s*(?:'([^']*)'|\"([^\"]*)\"|([^,\s)]+))", args_str):
                     key = pair[0]
                     val = pair[1] or pair[2] or pair[3]
                     args[key] = val
             return {"name": tool_name, "args": args}
 
-        # --- Formats 1, 3, 4, 5: JSON-based ---
+        # --- Format 2: OpenAI-style {"tool_calls": [{"function": {...}}]} ---
+        # Also handles {"tool_calls": [{"function": "name", "args": {...}}]} variant
+        ocr = re.search(r'"tool_calls"\s*:', text)
+        if ocr:
+            # Find the outermost { that contains this key
+            find_start = text.rfind("{", 0, ocr.start())
+            tc_start = find_start if find_start >= 0 else ocr.start() - 1
+            for end in range(tc_start + 1, min(len(text) + 1, tc_start + 5000)):
+                if text[end - 1] == "}":
+                    try:
+                        data = json.loads(text[tc_start:end])
+                        if isinstance(data, dict):
+                            tc_list = data.get("tool_calls", [])
+                            if isinstance(tc_list, list) and len(tc_list) > 0:
+                                first_call = tc_list[0]
+                                if isinstance(first_call, dict):
+                                    # Variant A: {"function": {"name": "...", "arguments": {...}}}
+                                    fn_info = first_call.get("function")
+                                    if isinstance(fn_info, dict):
+                                        tool_name = fn_info.get("name", "")
+                                        args_raw = fn_info.get("arguments", {})
+                                        if isinstance(args_raw, str):
+                                            try:
+                                                args_raw = json.loads(args_raw)
+                                            except (json.JSONDecodeError, ValueError):
+                                                args_raw = {}
+                                        if tool_name:
+                                            return {"name": tool_name, "args": args_raw if isinstance(args_raw, dict) else {}}
+                                    # Variant B: {"function": "name", "args": {...}}
+                                    tool_name = fn_info if isinstance(fn_info, str) else None
+                                    if not tool_name:
+                                        tool_name = first_call.get("name", "")
+                                    if tool_name:
+                                        args_raw = first_call.get("args") or first_call.get("arguments") or {}
+                                        if isinstance(args_raw, str):
+                                            try:
+                                                args_raw = json.loads(args_raw)
+                                            except (json.JSONDecodeError, ValueError):
+                                                args_raw = {}
+                                        return {"name": tool_name, "args": args_raw if isinstance(args_raw, dict) else {}}
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+
+        # --- Format 3: Nested {"tool_name": "...", "function_args": {...}} or similar variants ---
+        # Scan for any JSON object that has a recognizable tool function key
         brace_start = text.find("{")
-        if brace_start == -1:
-            return None
-
-        # Try to parse from the first brace
-        for start in range(brace_start, min(brace_start + 200, len(text))):
-            if text[start] != "{":
-                continue
-            try:
-                # Try progressively larger slices
-                for end in range(start + 1, min(len(text) + 1, start + 5000)):
-                    if text[end - 1] == "}":
-                        try:
-                            data = json.loads(text[start:end])
-                            if not isinstance(data, dict):
+        if brace_start >= 0:
+            for start in range(brace_start, min(brace_start + 200, len(text))):
+                if text[start] != "{":
+                    continue
+                try:
+                    for end in range(start + 1, min(len(text) + 1, start + 5000)):
+                        if text[end - 1] == "}":
+                            try:
+                                data = json.loads(text[start:end])
+                                if isinstance(data, dict):
+                                    tool_name = data.get("tool") or data.get("tool_name") or data.get("name") or data.get("function")
+                                    if tool_name and tool_name.lower() not in ("none", "null", "noop", ""):
+                                        args = data.get("arguments") or data.get("args") or data.get("tool_args") or data.get("params") or data.get("parameters") or data.get("function_args") or {}
+                                        if isinstance(args, dict):
+                                            return {"name": tool_name, "args": args}
+                                        elif isinstance(args, str):
+                                            try:
+                                                parsed_args = json.loads(args)
+                                                if isinstance(parsed_args, dict):
+                                                    return {"name": tool_name, "args": parsed_args}
+                                            except (json.JSONDecodeError, ValueError):
+                                                pass
+                                            return {"name": tool_name, "args": {"input": args}}
+                            except (json.JSONDecodeError, ValueError):
                                 continue
-
-                            # --- Format 1: flat {"tool"/"tool_name"/"name"/"function": ..., "arguments"/...} ---
-                            tool_name = (
-                                data.get("tool")
-                                or data.get("tool_name")
-                                or data.get("name")
-                                or data.get("function")
-                            )
-                            if tool_name and tool_name.lower() not in ("none", "null", "noop", ""):
-                                args = (
-                                    data.get("arguments")
-                                    or data.get("args")
-                                    or data.get("tool_args")
-                                    or data.get("params")
-                                    or data.get("parameters")
-                                    or {}
-                                )
-                                if isinstance(args, dict):
-                                    return {"name": tool_name, "args": args}
-                                elif isinstance(args, str):
-                                    try:
-                                        parsed_args = json.loads(args)
-                                        if isinstance(parsed_args, dict):
-                                            return {"name": tool_name, "args": parsed_args}
-                                    except (json.JSONDecodeError, ValueError):
-                                        pass
-                                    return {"name": tool_name, "args": {"input": args}}
-
-                            # --- Formats 3 & 4: {"tools": [...]} or {"tool_calls": [...]} ---
-                            # Each array element is either:
-                            #   a) {"name": "tool_name", "arguments": {...}}  (standard inner keys)
-                            #   b) {"tool_name": {...args}}                   (Qwen key-as-name inside array)
-                            for array_key in ("tools", "tool_calls"):
-                                array_val = data.get(array_key)
-                                if not (isinstance(array_val, list) and array_val):
-                                    continue
-                                first = array_val[0]
-                                if not isinstance(first, dict):
-                                    continue
-                                # Try standard inner keys first
-                                inner_name = (
-                                    first.get("tool")
-                                    or first.get("tool_name")
-                                    or first.get("name")
-                                    or first.get("function")
-                                )
-                                if inner_name and inner_name.lower() not in ("none", "null", "noop", ""):
-                                    inner_args = (
-                                        first.get("arguments")
-                                        or first.get("args")
-                                        or first.get("params")
-                                        or first.get("parameters")
-                                        or {}
-                                    )
-                                    if isinstance(inner_args, dict):
-                                        logger.debug(
-                                            "Normalizer[%s]: standard inner -> tool=%s args=%s",
-                                            array_key, inner_name, inner_args,
-                                        )
-                                        return {"name": inner_name, "args": inner_args}
-                                else:
-                                    # Qwen key-as-name inside array:
-                                    # e.g. {"tools": [{"list_files": {"path": "."}}]}
-                                    known_meta = {
-                                        "tool", "tool_name", "name", "function",
-                                        "arguments", "args", "params", "parameters",
-                                    }
-                                    for k, v in first.items():
-                                        if k not in known_meta and isinstance(v, dict):
-                                            logger.debug(
-                                                "Normalizer[%s]: key-as-name inside array -> tool=%s args=%s",
-                                                array_key, k, v,
-                                            )
-                                            return {"name": k, "args": v}
-
-                            # --- Format 5: {"read_file": {"path": "..."}} ---
-                            # Top-level key IS the tool name; value is the args dict.
-                            # Only match if the key is a known registered tool name.
-                            non_tool_keys = {
-                                "tool", "tool_name", "name", "function",
-                                "arguments", "args", "tool_args", "params", "parameters",
-                                "tools", "tool_calls",
-                                "thought", "message", "reasoning", "response",
-                                "phase", "action", "content", "text",
-                            }
-                            for k, v in data.items():
-                                if k not in non_tool_keys and isinstance(v, dict) and k in self.tools:
-                                    logger.debug(
-                                        "Normalizer[key-as-name]: top-level -> tool=%s args=%s",
-                                        k, v,
-                                    )
-                                    return {"name": k, "args": v}
-
-                            # No tool call recognized — continue scanning
-                        except (json.JSONDecodeError, ValueError):
-                            continue
-            except (ValueError, IndexError):
-                continue
-            break
+                except (ValueError, IndexError):
+                    continue
+                break
 
         return None
 
