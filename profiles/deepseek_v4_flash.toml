@@ -1,5 +1,5 @@
 [model]
-name = "Jackrong/Qwopus3.5-4B-Coder"
+name = "deepseek/deepseek-v4-flash"
 provider = "openai_compatible"
 max_turns = 60
 memory_horizon = 5
@@ -7,7 +7,7 @@ format_guard = false
 recency_protection = true
 has_thinking_tags = false
 stall_threshold = 2
-base_url = "https://specifies-format-herald-successfully.trycloudflare.com/v1"
+base_url = "https://openrouter.ai/api/v1"
 timeout = 360
 num_predict = 4096
 tool_call_format = "standard"

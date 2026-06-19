@@ -37,6 +37,9 @@ class ModelProfile:
     num_predict: Optional[int] = None
     tool_call_format: str = "standard"
     max_context_chars: Optional[int] = None  # Maximum chars before context trimming. None = no limit.
+    api_key: Optional[str] = None  # API key for authenticated endpoints (e.g. OpenRouter)
+    max_context_window: Optional[int] = None  # Model context window in tokens (e.g. 524288 for 512K). Used by the OpenAI client to avoid truncating output. None = no hard limit beyond what the model supports.
+    reasoning_exclude: Optional[bool] = None  # If True, sends reasoning: {exclude: true} to OpenRouter to suppress reasoning/thinking tokens.
     # Agent loop configuration (needle integration)
     agent_loop_module: str = "localite.loop.agent_loop"
     agent_loop_class: str = "AgentLoop"

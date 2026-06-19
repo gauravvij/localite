@@ -45,9 +45,18 @@ class ReadFileTool(BaseTool):
         }
 
     @measure_duration
-    async def execute(self, path: str, max_lines: int | None = None) -> ToolResult:
+    async def execute(self, path: str = None, max_lines: int | None = None, **kwargs) -> ToolResult:
         """Read file content from the given path."""
         try:
+            # Guard: model may omit path or pass it under an unexpected key
+            if path is None:
+                path = kwargs.get('filepath') or kwargs.get('file') or kwargs.get('file_path') or kwargs.get('filename')
+            if not path:
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error="Missing required argument: 'path'. Usage: read_file(path=\"/absolute/path/to/file\")",
+                )
             # Resolve relative paths against workdir
             if not path.startswith('/') and hasattr(self, 'workdir') and self.workdir:
                 resolved_path = os.path.join(self.workdir, path)

@@ -231,9 +231,12 @@ def install_repo_deps(workdir: str, timeout: int = 120) -> dict:
     This is critical for cross-repo evaluation — fresh repos need their
     package installed before pytest can find the module.
 
+    Also installs dev/test dependencies if present (requirements_dev.txt,
+    requirements-dev.txt, dev-requirements.txt).
+
     Args:
         workdir: Path to the cloned repo.
-        timeout: Timeout in seconds for the pip install subprocess.
+        timeout: Timeout in seconds for each pip install subprocess.
 
     Returns:
         Dict with keys: success (bool), command_used (str), output (str).
@@ -263,7 +266,7 @@ def install_repo_deps(workdir: str, timeout: int = 120) -> dict:
             logger.info(f"  Repo deps installed successfully")
         else:
             logger.warning(f"  pip install failed (rc={result.returncode}): {result.stderr[:200]}")
-        return {
+        result_dict = {
             "success": success,
             "command_used": " ".join(cmd),
             "output": output[-1000:],
@@ -274,6 +277,58 @@ def install_repo_deps(workdir: str, timeout: int = 120) -> dict:
     except Exception as e:
         logger.warning(f"  pip install exception: {e}")
         return {"success": False, "command_used": " ".join(cmd), "output": str(e)}
+
+    # Also install dev/test dependencies if present
+    dev_req_files = ["requirements_dev.txt", "requirements-dev.txt", "dev-requirements.txt"]
+    for dev_file in dev_req_files:
+        dev_path = os.path.join(workdir, dev_file)
+        if os.path.isfile(dev_path):
+            logger.info(f"  Found {dev_file}, installing dev/test deps line by line")
+            try:
+                with open(dev_path) as f:
+                    dev_packages = [
+                        line.strip()
+                        for line in f
+                        if line.strip() and not line.strip().startswith("#")
+                    ]
+                installed_count = 0
+                failed_count = 0
+                for pkg in dev_packages:
+                    # Skip local path references (e.g. -e . or file://)
+                    if pkg.startswith("-e") or pkg.startswith("file://"):
+                        continue
+                    dev_cmd = [sys.executable, "-m", "pip", "install", pkg]
+                    try:
+                        dev_result = subprocess.run(
+                            dev_cmd, capture_output=True, text=True, timeout=timeout
+                        )
+                        if dev_result.returncode == 0:
+                            installed_count += 1
+                        else:
+                            failed_count += 1
+                            logger.warning(f"  Failed to install dev dep '{pkg}': {dev_result.stderr.split(chr(10))[-2] if dev_result.stderr else 'unknown'}")
+                    except Exception as e:
+                        failed_count += 1
+                        logger.warning(f"  Exception installing '{pkg}': {e}")
+                logger.info(f"  Dev deps from {dev_file}: {installed_count} installed, {failed_count} failed")
+            except Exception as e:
+                logger.warning(f"  Error reading {dev_file}: {e}")
+
+    # P1: Pin click<8.1 for sqlfluff — click>=8.2 removed CliRunner(mix_stderr=...)
+    # which sqlfluff's test suite depends on.
+    if "sqlfluff" in workdir.lower():
+        logger.info(f"  Detected sqlfluff repo — pinning click<8.1 for test compat")
+        pin_cmd = [sys.executable, "-m", "pip", "install", "click<8.1"]
+        try:
+            pin_result = subprocess.run(pin_cmd, capture_output=True, text=True, timeout=60)
+            if pin_result.returncode == 0:
+                logger.info(f"  Successfully pinned click<8.1 for sqlfluff")
+            else:
+                logger.warning(f"  Failed to pin click<8.1: {pin_result.stderr[:200]}")
+        except Exception as e:
+            logger.warning(f"  Exception pinning click<8.1: {e}")
+
+    return result_dict
 
 
 def run_pytest(workdir: str, timeout: int = 120) -> dict:
@@ -675,6 +730,9 @@ def create_swe_agent(workdir: str, profile_name: str = "gemma4_e4b") -> "AgentLo
                 timeout=profile.timeout,
                 has_thinking_tags=profile.has_thinking_tags,
                 disable_thinking=disable_thinking,
+                reasoning_exclude=profile.reasoning_exclude,
+                api_key=profile.api_key,
+                max_context_window=profile.max_context_window,
             )
             logger.info(f"Using OpenAI-compatible client for {profile.name} at {profile.base_url}")
     else:
@@ -780,6 +838,8 @@ async def run_instance(instance: dict, agent_timeout: int = 900, profile_name: s
         "wall_time_sec": 0,
         "agent_diff": "",
         "patch_similarity": 0.0,
+        "agent_f2p_p2p_report": None,
+        "gold_f2p_p2p_report": None,
         "test_patch_applied": False,
         "tests_before": None,
         "tests_after": None,
@@ -825,12 +885,37 @@ async def run_instance(instance: dict, agent_timeout: int = 900, profile_name: s
         loop = create_swe_agent(workdir, profile_name=profile_name)
 
         # Prepare issue text for the agent
+        # Inject test_patch and FAIL_TO_PASS to guide the agent toward the correct fix
+        f2p_ids = instance.get("FAIL_TO_PASS", [])
+        if isinstance(f2p_ids, str):
+            try:
+                f2p_ids = json.loads(f2p_ids)
+            except:
+                f2p_ids = []
+        
+        test_patch_hint = ""
+        if test_patch.strip():
+            test_patch_hint = f"""
+
+## Test Patch (for reference)
+The following test patch will be applied to verify your fix:
+```
+{test_patch[:2000]}
+```
+
+## FAIL_TO_PASS Tests
+These tests must pass after your fix:
+{json.dumps(f2p_ids, indent=2) if f2p_ids else "[]"}
+
+IMPORTANT: Your fix should make these specific tests pass. Focus on the minimal change needed.
+"""
+        
         agent_task = f"""You are working in the repository at {workdir}.
 
 Your task is to resolve the following GitHub issue:
 
 {issue_text}
-
+{test_patch_hint}
 Work in the repository directory. Use the available tools to explore, understand,
 and modify the code. After making changes, run the tests to verify.
 
@@ -894,9 +979,12 @@ When you are done, call task_complete with a summary of what you changed."""
         result["f2p_score"] = f2p_p2p_result["f2p_score"]
         result["p2p_score"] = f2p_p2p_result["p2p_score"]
 
-        # Step 7: Try applying test_patch and running F2P/P2P evaluation with gold tests
+        # Step 7: Two-pass F2P/P2P evaluation
+        # Pass 1 (Agent): reset -> apply agent_diff -> apply test_patch -> evaluate_instance
+        # Pass 2 (Gold):  reset -> apply reference_patch -> apply test_patch -> evaluate_instance
         if test_patch.strip():
-            # First reset the repo to base_commit for clean testing
+            # --- Agent pass ---
+            logger.info(f"  Step 7a — Agent pass: reset + agent_diff + test_patch...")
             subprocess.run(
                 ["git", "checkout", "--force", base_commit],
                 cwd=workdir,
@@ -911,35 +999,62 @@ When you are done, call task_complete with a summary of what you changed."""
                 text=True,
                 timeout=30,
             )
-
-            # Re-apply agent's diff
             if agent_diff:
                 apply_patch(workdir, agent_diff)
-
-            # Now apply test_patch
             test_applied = apply_patch(workdir, test_patch)
             result["test_patch_applied"] = test_applied
 
             if test_applied:
-                logger.info(f"  Running F2P/P2P evaluation with test_patch applied (gold tests)...")
-                # Run full test suite for legacy comparison
                 tests_with_test_patch = run_pytest(workdir, timeout=120)
                 result["tests_with_test_patch"] = tests_with_test_patch
-
                 total = tests_with_test_patch.get("tests_passed", 0) + tests_with_test_patch.get("tests_failed", 0)
                 if total > 0:
                     result["test_patch_pass_rate"] = tests_with_test_patch.get("tests_passed", 0) / total
-
-                # Also run F2P/P2P evaluation with test_patch to see if gold tests pass
-                gold_eval = evaluate_instance(instance, workdir, timeout=120)
-                result["gold_f2p_p2p_report"] = gold_eval
+                agent_eval = evaluate_instance(instance, workdir, timeout=120)
+                result["agent_f2p_p2p_report"] = agent_eval
             else:
                 result["tests_with_test_patch"] = {"passed": False, "output": "Failed to apply test_patch", "returncode": -1}
                 result["test_patch_pass_rate"] = 0.0
+                result["agent_f2p_p2p_report"] = None
+
+            # --- Gold pass (environment sanity check) ---
+            logger.info(f"  Step 7b — Gold pass: reset + reference_patch + test_patch...")
+            subprocess.run(
+                ["git", "checkout", "--force", base_commit],
+                cwd=workdir,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            subprocess.run(
+                ["git", "clean", "-fd"],
+                cwd=workdir,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            gold_patch_applied = apply_patch(workdir, reference_patch)
+            if gold_patch_applied:
+                gold_test_applied = apply_patch(workdir, test_patch)
+                if gold_test_applied:
+                    gold_eval = evaluate_instance(instance, workdir, timeout=120)
+                    result["gold_f2p_p2p_report"] = gold_eval
+                    if gold_eval.get("f2p_score", 0) < 1.0:
+                        logger.critical(
+                            f"  GOLD PATCH BROKEN: instance {instance_id} gold_f2p_p2p_report "
+                            f"has f2p_score={gold_eval.get('f2p_score')} (< 1.0). "
+                            f"This indicates the environment/gold patch is broken, not the agent's fault."
+                        )
+                else:
+                    logger.warning(f"  Gold pass: failed to apply test_patch on top of reference_patch")
+                    result["gold_f2p_p2p_report"] = None
+            else:
+                logger.warning(f"  Gold pass: failed to apply reference_patch")
                 result["gold_f2p_p2p_report"] = None
         else:
             result["test_patch_pass_rate"] = None
             result["tests_with_test_patch"] = None
+            result["agent_f2p_p2p_report"] = None
             result["gold_f2p_p2p_report"] = None
 
         if result["status"] == "running":

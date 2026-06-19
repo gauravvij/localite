@@ -29,12 +29,18 @@ class AsyncOpenAIClient:
         timeout: float = DEFAULT_TIMEOUT,
         has_thinking_tags: bool = False,
         disable_thinking: bool = False,
+        reasoning_exclude: bool = False,
+        api_key: Optional[str] = None,
+        max_context_window: Optional[int] = None,
     ):
         self.model_name = model_name
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.has_thinking_tags = has_thinking_tags
         self.disable_thinking = disable_thinking
+        self.reasoning_exclude = reasoning_exclude
+        self.api_key = api_key
+        self.max_context_window = max_context_window
 
     async def chat(
         self,
@@ -69,6 +75,10 @@ class AsyncOpenAIClient:
         if self.disable_thinking:
             payload["chat_template_kwargs"] = {"enable_thinking": False}
 
+        # Suppress reasoning tokens for models that support OpenRouter's reasoning: {exclude: true}
+        if self.reasoning_exclude:
+            payload["reasoning"] = {"exclude": True}
+
         # Map options to OpenAI-compatible parameters
         if options:
             openai_params = {}
@@ -84,20 +94,23 @@ class AsyncOpenAIClient:
 
         # Safety check: if max_tokens is set, ensure prompt + max_tokens fits within a reasonable
         # context window. Estimate tokens roughly at 1 char = ~0.5 tokens for mixed content.
-        # vLLM will reject if prompt_tokens + max_tokens > max_model_len.
+        # DeepSeek V4 Flash supports 1M-token context. Use a generous default limit of 512K
+        # to avoid truncating output for any modern large-context model. The agent_loop already
+        # bounds context size via max_context_chars, so this is a failsafe against runaway prompts.
+        max_safe = getattr(self, "max_context_window", 524288)
         if "max_tokens" in payload:
             raw_text = "".join(m.get("content", "") for m in messages)
             estimated_prompt_tokens = len(raw_text) // 4  # conservative: 4 chars per token for safety margin
             effective_max_tokens = payload["max_tokens"]
-            if estimated_prompt_tokens + effective_max_tokens > 16000:  # max_model_len is ~16384
-                reduced = max(512, 16000 - estimated_prompt_tokens - 256)  # leave 256 token margin
+            if estimated_prompt_tokens + effective_max_tokens > max_safe:
+                reduced = max(512, max_safe - estimated_prompt_tokens - 256)  # leave 256 token margin
                 if reduced < effective_max_tokens:
                     logger.warning(
-                        "Estimated total tokens (%d prompt + %d max = %d) exceeds 16K limit. "
+                        "Estimated total tokens (%d prompt + %d max = %d) exceeds %d limit. "
                         "Reducing max_tokens from %d to %d.",
                         estimated_prompt_tokens, effective_max_tokens,
                         estimated_prompt_tokens + effective_max_tokens,
-                        effective_max_tokens, reduced,
+                        max_safe, effective_max_tokens, reduced,
                     )
                     payload["max_tokens"] = reduced
 
@@ -110,11 +123,19 @@ class AsyncOpenAIClient:
             payload.get("max_tokens"),
         )
 
+        # Build auth headers for API key (e.g. OpenRouter)
+        headers = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+            headers["HTTP-Referer"] = "https://localite.dev"
+            headers["X-Title"] = "Localite Eval"
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
                     json=payload,
+                    headers=headers,
                 )
                 response.raise_for_status()
 
@@ -127,7 +148,9 @@ class AsyncOpenAIClient:
                         raw = ""
                         logger.warning("CHAT RESPONSE — no choices in response: %s", data)
                     else:
-                        raw = choices[0].get("message", {}).get("content", "")
+                        raw = choices[0].get("message", {}).get("content")
+                        if raw is None:
+                            raw = ""
 
                     logger.debug(
                         "CHAT RESPONSE RAW — content_len=%d",

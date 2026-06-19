@@ -1,0 +1,14 @@
+[model]
+name = "deepseek/deepseek-v4-flash"
+provider = "openai_compatible"
+max_turns = 60
+memory_horizon = 8
+format_guard = false
+recency_protection = true
+has_thinking_tags = false
+stall_threshold = 4
+base_url = "https://openrouter.ai/api/v1"
+timeout = 360
+num_predict = 8192
+tool_call_format = "standard"
+max_context_chars = 80000
