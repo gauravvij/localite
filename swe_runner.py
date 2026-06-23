@@ -50,7 +50,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("datasets").setLevel(logging.WARNING)
 
 # Results directory
-RESULTS_DIR = os.path.join(PROJECT_ROOT, "results", "swe_bench")
+RESULTS_DIR = os.environ.get("LOCALITE_RESULTS_DIR", os.path.join(PROJECT_ROOT, "results", "swe_bench"))
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # --- Localite imports ---
@@ -117,7 +117,7 @@ def load_dev_instances(max_instances: int = None, specific_ids: list[str] = None
 # Repo management
 # ============================================================
 
-REPOS_DIR = os.path.join(PROJECT_ROOT, "results", "swe_bench", "repos")
+REPOS_DIR = os.environ.get("LOCALITE_REPOS_DIR", os.path.join(PROJECT_ROOT, "results", "swe_bench", "repos"))
 os.makedirs(REPOS_DIR, exist_ok=True)
 
 
@@ -533,6 +533,18 @@ def evaluate_instance(instance: dict, workdir: str, timeout: int = 120) -> dict:
 
         p2p_success = [tid for tid in p2p_ids if any(match_tid(tid, pt) for pt in passed_tests)]
         p2p_failure = [tid for tid in p2p_ids if any(match_tid(tid, ft) for ft in failed_tests) and tid not in p2p_success]
+
+        # FALLBACK: If pytest crashed (no test results parsed at all),
+        # mark ALL P2P tests as pre-existing baseline failures and ALL
+        # F2P tests as baseline failures. This handles cases like
+        # ImportError at pytest collection time (e.g. VTK version mismatch).
+        if not passed_tests and not failed_tests:
+            logger.warning("  No test results parsed from pytest output — pytest likely crashed at collection")
+            logger.warning("  Falling back: marking ALL P2P tests as pre-existing baseline failures")
+            p2p_failure = list(p2p_ids)
+            p2p_success = []
+            f2p_failure = list(f2p_ids)
+            f2p_success = []
 
         report = {
             "FAIL_TO_PASS": {
